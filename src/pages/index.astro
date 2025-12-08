@@ -76,7 +76,22 @@
         width: 100%;
         height: 100%;
         transform: translate(-50%, -50%);
-        object-fit: contain;
+        object-fit: cover;
+      }
+
+      /* Desktop: fill window maintaining aspect ratio */
+      @media (orientation: landscape) {
+        video {
+          object-fit: cover;
+        }
+      }
+
+      /* Mobile portrait: center crop to 9:16 */
+      @media (orientation: portrait) {
+        video {
+          object-fit: cover;
+          object-position: center;
+        }
       }
     </style>
   </body>
