@@ -10,11 +10,35 @@
   </head>
   <body>
     <a href="/about" class="video-container">
-      <video autoplay muted loop playsinline class="background-video">
+      <video id="bgVideo" autoplay muted loop playsinline class="background-video">
         <source src="/videos/splash.mp4" type="video/mp4" />
         Your browser does not support the video tag.
       </video>
     </a>
+
+    <script>
+      // Force video play on iOS
+      const video = document.getElementById('bgVideo');
+
+      if (video && video instanceof HTMLVideoElement) {
+        // Attempt to play immediately
+        video.play().catch(() => {
+          // If autoplay fails, try again on user interaction
+          document.addEventListener('touchstart', function() {
+            if (video instanceof HTMLVideoElement) {
+              video.play();
+            }
+          }, { once: true });
+        });
+
+        // Also try when page becomes visible
+        document.addEventListener('visibilitychange', function() {
+          if (!document.hidden && video instanceof HTMLVideoElement) {
+            video.play();
+          }
+        });
+      }
+    </script>
 
     <style>
       * {
