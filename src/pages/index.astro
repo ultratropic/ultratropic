@@ -9,7 +9,7 @@
     <title>Homepage</title>
   </head>
   <body>
-    <a href="/about" class="video-container">
+    <div class="video-container" id="videoContainer">
       <video
         id="bgVideo"
         autoplay
@@ -22,18 +22,23 @@
         <source src="/videos/splash.mp4" type="video/mp4" />
         Your browser does not support the video tag.
       </video>
-    </a>
+    </div>
 
     <script is:inline>
       (function() {
         const video = document.getElementById('bgVideo');
+        const container = document.getElementById('videoContainer');
+        let isPlaying = false;
 
-        if (!video) return;
+        if (!video || !container) return;
 
-        // Remove any existing event listeners
+        // Function to play video
         const playVideo = function() {
           video.muted = true;
-          video.play().catch(function(error) {
+          video.play().then(function() {
+            isPlaying = true;
+            container.style.cursor = 'pointer';
+          }).catch(function(error) {
             console.log('Video autoplay prevented:', error);
           });
         };
@@ -41,16 +46,28 @@
         // Try to play when video is loaded
         video.addEventListener('loadeddata', playVideo, { once: true });
 
-        // Try to play on any user interaction
-        const interactions = ['touchstart', 'touchend', 'click'];
-        interactions.forEach(function(event) {
-          document.addEventListener(event, playVideo, { once: true, passive: true });
+        // Handle click - play video first, then navigate if already playing
+        container.addEventListener('click', function(e) {
+          if (isPlaying) {
+            window.location.href = '/about';
+          } else {
+            playVideo();
+          }
         });
 
         // Try to play immediately if video is already loaded
         if (video.readyState >= 2) {
           playVideo();
         }
+
+        // Monitor play state
+        video.addEventListener('play', function() {
+          isPlaying = true;
+        });
+
+        video.addEventListener('pause', function() {
+          isPlaying = false;
+        });
       })();
     </script>
 
