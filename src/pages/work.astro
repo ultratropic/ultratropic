@@ -4,7 +4,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
     <title>Work | Ultratropic</title>
   </head>
   <body>
@@ -88,6 +88,37 @@
         font-size: 1.1rem;
         color: #444;
         line-height: 1.8;
+      }
+
+      /* Mobile optimizations */
+      @media (max-width: 768px) {
+        .site-header {
+          padding: 1rem 1.5rem;
+        }
+
+        .logo a {
+          font-size: 1rem;
+        }
+
+        nav {
+          gap: 1.5rem;
+        }
+
+        nav a {
+          font-size: 0.85rem;
+        }
+
+        main {
+          padding: 2rem 1.5rem;
+        }
+
+        h1 {
+          font-size: 2rem;
+        }
+
+        p {
+          font-size: 1rem;
+        }
       }
     </style>
   </body>

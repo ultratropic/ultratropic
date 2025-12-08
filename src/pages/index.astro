@@ -5,7 +5,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <title>Homepage</title>
   </head>
   <body>
@@ -27,6 +27,9 @@
         overflow: hidden;
         width: 100vw;
         height: 100vh;
+        height: 100dvh; /* Dynamic viewport height for mobile */
+        position: fixed;
+        -webkit-overflow-scrolling: touch;
       }
 
       .video-container {
