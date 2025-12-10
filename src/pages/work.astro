@@ -19,9 +19,156 @@
     </header>
 
     <main>
-      <h1>Work</h1>
-      <p>This is where you can showcase your projects and portfolio.</p>
+      <div class="projects-grid">
+        <!-- Steve Madden - Cool Planet -->
+        <div class="project-item">
+          <video
+            autoplay
+            muted
+            loop
+            playsinline
+            preload="auto"
+            class="landscape-video"
+          >
+            <source src="/projects/steve_madden-cool_planet/sm-cp-landscape.mp4" type="video/mp4" />
+          </video>
+          <video
+            autoplay
+            muted
+            loop
+            playsinline
+            preload="auto"
+            class="portrait-video"
+          >
+            <source src="/projects/steve_madden-cool_planet/sm-cp-portrait.mp4" type="video/mp4" />
+          </video>
+        </div>
+
+        <!-- Steve Madden - SP24 -->
+        <div class="project-item">
+          <video
+            autoplay
+            muted
+            loop
+            playsinline
+            preload="auto"
+            class="landscape-video"
+          >
+            <source src="/projects/steve_madden-sp24/sm-sp24-landscape.mp4" type="video/mp4" />
+          </video>
+          <video
+            autoplay
+            muted
+            loop
+            playsinline
+            preload="auto"
+            class="portrait-video"
+          >
+            <source src="/projects/steve_madden-sp24/sm-sp24-protrait.mp4" type="video/mp4" />
+          </video>
+        </div>
+
+        <!-- Woolrich -->
+        <div class="project-item">
+          <video
+            autoplay
+            muted
+            loop
+            playsinline
+            preload="auto"
+          >
+            <source src="/projects/woolrich/woolrich-landscape.mp4" type="video/mp4" />
+          </video>
+        </div>
+
+        <!-- Steve Madden - BTS -->
+        <div class="project-item">
+          <video
+            autoplay
+            muted
+            loop
+            playsinline
+            preload="auto"
+          >
+            <source src="/projects/steve_madden-bts/sm-bts-landscape.mp4" type="video/mp4" />
+          </video>
+        </div>
+
+        <!-- Stone Island (photo) -->
+        <div class="project-item">
+          <img src="/projects/stone_island/000086880009.jpg" alt="Stone Island" />
+        </div>
+
+        <!-- Merrell (photo) -->
+        <div class="project-item">
+          <img src="/projects/merrell/dyptych.jpg" alt="Merrell" />
+        </div>
+
+        <!-- Mackage Core -->
+        <div class="project-item">
+          <video
+            autoplay
+            muted
+            loop
+            playsinline
+            preload="auto"
+            class="landscape-video"
+          >
+            <source src="/projects/mackage-core/mackage-thumbnail-landscape.mp4" type="video/mp4" />
+          </video>
+          <video
+            autoplay
+            muted
+            loop
+            playsinline
+            preload="auto"
+            class="portrait-video"
+          >
+            <source src="/projects/mackage-core/mackage-thumbnail-portrait.mp4" type="video/mp4" />
+          </video>
+        </div>
+      </div>
     </main>
+
+    <script>
+      // Handle orientation-based video switching for each project
+      document.addEventListener('DOMContentLoaded', () => {
+        const projectItems = document.querySelectorAll('.project-item');
+        const isPortrait = window.matchMedia('(orientation: portrait)').matches;
+
+        projectItems.forEach(item => {
+          const landscapeVideo = item.querySelector('.landscape-video') as HTMLVideoElement | null;
+          const portraitVideo = item.querySelector('.portrait-video') as HTMLVideoElement | null;
+
+          // Only process items that have both landscape and portrait videos
+          if (landscapeVideo && portraitVideo) {
+            const activeVideo = isPortrait ? portraitVideo : landscapeVideo;
+            const inactiveVideo = isPortrait ? landscapeVideo : portraitVideo;
+
+            // Remove the inactive video's source to prevent loading
+            const inactiveSource = inactiveVideo.querySelector('source');
+            if (inactiveSource) {
+              inactiveSource.removeAttribute('src');
+            }
+            inactiveVideo.load();
+
+            // Attempt to play the active video
+            const attemptPlay = () => {
+              const playPromise = activeVideo.play();
+              if (playPromise !== undefined) {
+                playPromise.catch(() => {
+                  // Autoplay was prevented - this is okay for thumbnails
+                });
+              }
+            };
+
+            activeVideo.addEventListener('loadeddata', attemptPlay);
+            activeVideo.addEventListener('canplay', attemptPlay);
+            attemptPlay();
+          }
+        });
+      });
+    </script>
 
     <style>
       * {
@@ -74,20 +221,58 @@
       }
 
       main {
-        max-width: 1200px;
+        max-width: 1400px;
         margin: 0 auto;
-        padding: 3rem 2rem;
+        padding: 2rem;
       }
 
-      h1 {
-        font-size: 2.5rem;
-        margin-bottom: 1.5rem;
+      .projects-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 1.5rem;
       }
 
-      p {
-        font-size: 1.1rem;
-        color: #444;
-        line-height: 1.8;
+      .project-item {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        overflow: hidden;
+        cursor: pointer;
+        background: #000;
+      }
+
+      .project-item video,
+      .project-item img {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: center;
+      }
+
+      /* Show/hide videos based on orientation */
+      .landscape-video {
+        display: block;
+      }
+
+      .portrait-video {
+        display: none;
+      }
+
+      @media (orientation: portrait) {
+        .landscape-video {
+          display: none;
+        }
+
+        .portrait-video {
+          display: block;
+        }
+
+        .project-item {
+          aspect-ratio: 9 / 16;
+        }
       }
 
       /* Mobile optimizations */
@@ -109,15 +294,12 @@
         }
 
         main {
-          padding: 2rem 1.5rem;
+          padding: 1.5rem;
         }
 
-        h1 {
-          font-size: 2rem;
-        }
-
-        p {
-          font-size: 1rem;
+        .projects-grid {
+          grid-template-columns: 1fr;
+          gap: 1rem;
         }
       }
     </style>

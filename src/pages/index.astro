@@ -11,36 +11,79 @@
     <div class="container">
       <video
         id="video"
+        autoplay
         muted
         loop
         playsinline
         preload="auto"
+        class="landscape-video"
       >
         <source src="/videos/splash.mp4" type="video/mp4" />
+      </video>
+      <video
+        id="video-portrait"
+        autoplay
+        muted
+        loop
+        playsinline
+        preload="auto"
+        class="portrait-video"
+      >
+        <source src="/videos/splash-portrait.mp4" type="video/mp4" />
       </video>
     </div>
 
     <script>
-      const video = document.getElementById('video');
-      let hasPlayed = false;
+      const videoLandscape = document.getElementById('video');
+      const videoPortrait = document.getElementById('video-portrait');
+      let isPlaying = false;
 
-      // Try autoplay
-      video.play().catch(() => {
-        hasPlayed = false;
+      // Determine which video to use based on orientation
+      const isPortrait = window.matchMedia('(orientation: portrait)').matches;
+      const activeVideo = isPortrait ? videoPortrait : videoLandscape;
+      const inactiveVideo = isPortrait ? videoLandscape : videoPortrait;
+
+      // Remove the inactive video's source to prevent loading
+      const inactiveSource = inactiveVideo.querySelector('source');
+      if (inactiveSource) {
+        inactiveSource.removeAttribute('src');
+      }
+      inactiveVideo.load();
+
+      // Attempt to play immediately
+      const attemptPlay = () => {
+        const playPromise = activeVideo.play();
+        if (playPromise !== undefined) {
+          playPromise.then(() => {
+            isPlaying = true;
+          }).catch(() => {
+            // Autoplay was prevented
+            isPlaying = false;
+          });
+        }
+      };
+
+      // Try multiple strategies to ensure autoplay
+      activeVideo.addEventListener('loadeddata', attemptPlay);
+      activeVideo.addEventListener('canplay', attemptPlay);
+
+      // Also try immediately
+      attemptPlay();
+
+      activeVideo.addEventListener('play', () => {
+        isPlaying = true;
       });
 
-      video.addEventListener('play', () => {
-        hasPlayed = true;
+      activeVideo.addEventListener('pause', () => {
+        isPlaying = false;
       });
 
-      // Handle click
+      // Handle click - navigate to about page if video is playing, otherwise try to play
       document.body.addEventListener('click', () => {
-        if (hasPlayed) {
+        if (isPlaying) {
           window.location.href = '/about';
         } else {
-          video.play().then(() => {
-            hasPlayed = true;
-          });
+          attemptPlay();
         }
       });
     </script>
@@ -53,44 +96,52 @@
       }
 
       html, body {
-        width: 100%;
-        height: 100%;
+        width: 100vw;
+        height: 100vh;
         overflow: hidden;
         background: #000;
+        margin: 0;
+        padding: 0;
       }
 
       .container {
         position: fixed;
         top: 0;
         left: 0;
-        width: 100%;
-        height: 100%;
+        width: 100vw;
+        height: 100vh;
         cursor: pointer;
         background: #000;
       }
 
       video {
         position: absolute;
-        top: 50%;
-        left: 50%;
+        top: 0;
+        left: 0;
         width: 100%;
         height: 100%;
-        transform: translate(-50%, -50%);
+        -o-object-fit: cover;
         object-fit: cover;
+        -o-object-position: center;
+        object-position: center;
       }
 
-      /* Desktop: fill window maintaining aspect ratio */
-      @media (orientation: landscape) {
-        video {
-          object-fit: cover;
-        }
+      /* Show/hide videos based on orientation */
+      .landscape-video {
+        display: block;
       }
 
-      /* Mobile portrait: center crop to 9:16 */
+      .portrait-video {
+        display: none;
+      }
+
       @media (orientation: portrait) {
-        video {
-          object-fit: cover;
-          object-position: center;
+        .landscape-video {
+          display: none;
+        }
+
+        .portrait-video {
+          display: block;
         }
       }
     </style>

@@ -22,3 +22,5 @@ pnpm-debug.log*
 
 # jetbrains setting folder
 .idea/
+public/projects/anitta/anitta.mp4
+public/projects/major_lazer/major_lazer.mp4
