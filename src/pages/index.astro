@@ -78,10 +78,10 @@
         isPlaying = false;
       });
 
-      // Handle click - navigate to about page if video is playing, otherwise try to play
+      // Handle click - navigate to work page if video is playing, otherwise try to play
       document.body.addEventListener('click', () => {
         if (isPlaying) {
-          window.location.href = '/about';
+          window.location.href = '/work';
         } else {
           attemptPlay();
         }
