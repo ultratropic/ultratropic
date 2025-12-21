@@ -202,41 +202,23 @@
     </div>
 
     <script>
-      // Handle orientation-based video switching for each project
+      // Handle video autoplay for all videos
       document.addEventListener('DOMContentLoaded', () => {
-        const projectItems = document.querySelectorAll('.project-item');
-        const isPortrait = window.matchMedia('(orientation: portrait)').matches;
+        const allVideos = document.querySelectorAll('video');
 
-        projectItems.forEach(item => {
-          const landscapeVideo = item.querySelector('.landscape-video') as HTMLVideoElement | null;
-          const portraitVideo = item.querySelector('.portrait-video') as HTMLVideoElement | null;
-
-          // Only process items that have both landscape and portrait videos
-          if (landscapeVideo && portraitVideo) {
-            const activeVideo = isPortrait ? portraitVideo : landscapeVideo;
-            const inactiveVideo = isPortrait ? landscapeVideo : portraitVideo;
-
-            // Remove the inactive video's source to prevent loading
-            const inactiveSource = inactiveVideo.querySelector('source');
-            if (inactiveSource) {
-              inactiveSource.removeAttribute('src');
+        allVideos.forEach(video => {
+          const attemptPlay = () => {
+            const playPromise = video.play();
+            if (playPromise !== undefined) {
+              playPromise.catch(() => {
+                // Autoplay was prevented - this is okay for thumbnails
+              });
             }
-            inactiveVideo.load();
+          };
 
-            // Attempt to play the active video
-            const attemptPlay = () => {
-              const playPromise = activeVideo.play();
-              if (playPromise !== undefined) {
-                playPromise.catch(() => {
-                  // Autoplay was prevented - this is okay for thumbnails
-                });
-              }
-            };
-
-            activeVideo.addEventListener('loadeddata', attemptPlay);
-            activeVideo.addEventListener('canplay', attemptPlay);
-            attemptPlay();
-          }
+          video.addEventListener('loadeddata', attemptPlay);
+          video.addEventListener('canplay', attemptPlay);
+          attemptPlay();
         });
       });
     </script>
