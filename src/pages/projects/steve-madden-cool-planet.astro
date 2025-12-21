@@ -147,7 +147,7 @@
         display: block;
       }
 
-      /* Show/hide videos based on orientation */
+      /* Show/hide videos based on device width (mobile vs desktop) */
       .landscape-video {
         display: block;
       }
@@ -156,7 +156,8 @@
         display: none;
       }
 
-      @media (orientation: portrait) {
+      /* Only switch to portrait videos on actual mobile devices */
+      @media (max-width: 768px) and (orientation: portrait) {
         .landscape-video {
           display: none;
         }
