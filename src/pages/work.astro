@@ -202,10 +202,26 @@
     </div>
 
     <script>
-      // Handle video autoplay for all videos
+      // Handle video selection and autoplay
       document.addEventListener('DOMContentLoaded', () => {
-        const allVideos = document.querySelectorAll('video');
+        const projectItems = document.querySelectorAll('.project-item');
+        const isMobile = window.innerWidth <= 768;
+        const isPortraitOrientation = window.matchMedia('(orientation: portrait)').matches;
+        const shouldUsePortrait = isMobile && isPortraitOrientation;
 
+        projectItems.forEach(item => {
+          const landscapeVideo = item.querySelector('.landscape-video') as HTMLVideoElement | null;
+          const portraitVideo = item.querySelector('.portrait-video') as HTMLVideoElement | null;
+
+          // If there are both landscape and portrait videos
+          if (landscapeVideo && portraitVideo) {
+            const videoToRemove = shouldUsePortrait ? landscapeVideo : portraitVideo;
+            videoToRemove.remove();
+          }
+        });
+
+        // Now autoplay all remaining videos
+        const allVideos = document.querySelectorAll('video');
         allVideos.forEach(video => {
           const attemptPlay = () => {
             const playPromise = video.play();
@@ -322,26 +338,6 @@
         font-size: 0.875rem;
         color: #000;
         text-align: left;
-      }
-
-      /* Show/hide videos based on device width (mobile vs desktop) */
-      .landscape-video {
-        display: block;
-      }
-
-      .portrait-video {
-        display: none;
-      }
-
-      /* Only switch to portrait videos on actual mobile devices */
-      @media (max-width: 768px) and (orientation: portrait) {
-        .landscape-video {
-          display: none;
-        }
-
-        .portrait-video {
-          display: block;
-        }
       }
 
       /* Mobile optimizations */
