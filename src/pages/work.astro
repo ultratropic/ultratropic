@@ -202,7 +202,7 @@
     </div>
 
     <script>
-      // Handle video selection and play on hover
+      // Handle video selection based on device orientation
       document.addEventListener('DOMContentLoaded', () => {
         const projectItems = document.querySelectorAll('.project-item');
         const isMobile = window.innerWidth <= 768;
@@ -217,23 +217,6 @@
           if (landscapeVideo && portraitVideo) {
             const videoToRemove = shouldUsePortrait ? landscapeVideo : portraitVideo;
             videoToRemove.remove();
-          }
-
-          // Get the remaining video (if any)
-          const video = item.querySelector('video') as HTMLVideoElement | null;
-          if (video) {
-            // Play on hover
-            item.addEventListener('mouseenter', () => {
-              video.play().catch(() => {
-                // Play was prevented
-              });
-            });
-
-            // Pause when mouse leaves
-            item.addEventListener('mouseleave', () => {
-              video.pause();
-              video.currentTime = 0; // Reset to start
-            });
           }
         });
       });
