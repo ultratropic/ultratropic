@@ -1,0 +1,120 @@
+---
+interface Props {
+  title: string;
+  activePage?: 'work' | 'info';
+}
+
+const { title, activePage } = Astro.props;
+---
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+    <title>{title}</title>
+  </head>
+  <body>
+    <div class="container">
+      <header class="site-header">
+        <div class="logo">
+          <a href="/">ULTRATROPIC</a>
+        </div>
+        <nav>
+          <a href="/work" class={activePage === 'work' ? 'active' : ''}>WORK</a>
+          <a href="/about" class={activePage === 'info' ? 'active' : ''}>INFO</a>
+        </nav>
+      </header>
+
+      <main>
+        <slot />
+      </main>
+    </div>
+
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        line-height: 1.6;
+        background: #fff;
+      }
+
+      .container {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 0 2rem;
+      }
+
+      .site-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1.5rem 0;
+        border-bottom: 1px solid #e0e0e0;
+      }
+
+      .logo a {
+        font-size: 1.25rem;
+        font-weight: 700;
+        text-decoration: none;
+        color: #000;
+        letter-spacing: 0.5px;
+      }
+
+      nav {
+        display: flex;
+        gap: 2rem;
+      }
+
+      nav a {
+        text-decoration: none;
+        color: #666;
+        font-weight: 500;
+        font-size: 0.95rem;
+        letter-spacing: 0.5px;
+        transition: color 0.2s;
+      }
+
+      nav a:hover {
+        color: #000;
+      }
+
+      nav a.active {
+        color: #000;
+      }
+
+      main {
+        padding: 2rem 0;
+      }
+
+      @media (max-width: 768px) {
+        .container {
+          padding: 0 1.5rem;
+        }
+
+        .site-header {
+          padding: 1rem 0;
+        }
+
+        .logo a {
+          font-size: 1rem;
+        }
+
+        nav {
+          gap: 1.5rem;
+        }
+
+        nav a {
+          font-size: 0.85rem;
+        }
+
+        main {
+          padding: 1.5rem 0;
+        }
+      }
+    </style>
+  </body>
+</html>

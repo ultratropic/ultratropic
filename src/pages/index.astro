@@ -18,7 +18,6 @@
         preload="auto"
         class="landscape-video"
       >
-        <source src="/videos/splash.mp4" type="video/mp4" />
       </video>
       <video
         id="video-portrait"
@@ -29,7 +28,6 @@
         preload="auto"
         class="portrait-video"
       >
-        <source src="/videos/splash-portrait.mp4" type="video/mp4" />
       </video>
     </div>
 
@@ -41,51 +39,37 @@
       // Determine which video to use based on orientation
       const isPortrait = window.matchMedia('(orientation: portrait)').matches;
       const activeVideo = isPortrait ? videoPortrait : videoLandscape;
-      const inactiveVideo = isPortrait ? videoLandscape : videoPortrait;
 
-      // Remove the inactive video's source to prevent loading
-      const inactiveSource = inactiveVideo.querySelector('source');
-      if (inactiveSource) {
-        inactiveSource.removeAttribute('src');
+      // Only load the source for the active video (prevents wasted bandwidth)
+      if (activeVideo) {
+        const source = document.createElement('source');
+        source.src = isPortrait ? '/videos/splash-portrait.mp4' : '/videos/splash.mp4';
+        source.type = 'video/mp4';
+        activeVideo.appendChild(source);
+
+        const attemptPlay = () => {
+          const playPromise = activeVideo.play();
+          if (playPromise !== undefined) {
+            playPromise.then(() => {
+              isPlaying = true;
+            }).catch(() => {
+              isPlaying = false;
+            });
+          }
+        };
+
+        activeVideo.addEventListener('canplay', attemptPlay);
+        attemptPlay();
+
+        // Handle click - navigate to work page if video is playing, otherwise try to play
+        document.body.addEventListener('click', () => {
+          if (isPlaying) {
+            window.location.href = '/work';
+          } else {
+            attemptPlay();
+          }
+        });
       }
-      inactiveVideo.load();
-
-      // Attempt to play immediately
-      const attemptPlay = () => {
-        const playPromise = activeVideo.play();
-        if (playPromise !== undefined) {
-          playPromise.then(() => {
-            isPlaying = true;
-          }).catch(() => {
-            // Autoplay was prevented
-            isPlaying = false;
-          });
-        }
-      };
-
-      // Try multiple strategies to ensure autoplay
-      activeVideo.addEventListener('loadeddata', attemptPlay);
-      activeVideo.addEventListener('canplay', attemptPlay);
-
-      // Also try immediately
-      attemptPlay();
-
-      activeVideo.addEventListener('play', () => {
-        isPlaying = true;
-      });
-
-      activeVideo.addEventListener('pause', () => {
-        isPlaying = false;
-      });
-
-      // Handle click - navigate to work page if video is playing, otherwise try to play
-      document.body.addEventListener('click', () => {
-        if (isPlaying) {
-          window.location.href = '/work';
-        } else {
-          attemptPlay();
-        }
-      });
     </script>
 
     <style>
@@ -120,9 +104,7 @@
         left: 0;
         width: 100%;
         height: 100%;
-        -o-object-fit: cover;
         object-fit: cover;
-        -o-object-position: center;
         object-position: center;
       }
 

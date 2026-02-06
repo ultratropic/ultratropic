@@ -1,121 +1,22 @@
 ---
-// about.astro
+import BaseLayout from '../layouts/BaseLayout.astro';
 ---
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
-    <title>Info | Ultratropic</title>
-  </head>
-  <body>
-    <header class="site-header">
-      <div class="logo">
-        <a href="/">ULTRATROPIC</a>
-      </div>
-      <nav>
-        <a href="/work">WORK</a>
-        <a href="/about" class="active">INFO</a>
-      </nav>
-    </header>
+<BaseLayout title="Info | Ultratropic" activePage="info">
+  <p>Ultratropic is a full-service creative production and post-production studio specializing in fashion, lifestyle, and entertainment. We've worked with clients like Nike, Visa, Walmart, Puma, Steve Madden, and Kappa. Our editorial work has appeared in Rolling Stone, GQ, Wall Street Journal, and Kaleidoscope, among others.</p>
 
-    <main>
-      <p>Ultratropic is a full-service creative production and post-production studio specializing in fashion, lifestyle, and entertainment. We've worked with clients like Nike, Visa, Walmart, Puma, Steve Madden, and Kappa. Our editorial work has appeared in Rolling Stone, GQ, Wall Street Journal, and Kaleidoscope, among others.</p>
-    </main>
+  <style>
+    p {
+      font-size: 2.2rem;
+      color: #444;
+      line-height: 1.4;
+      max-width: 1200px;
+    }
 
-    <style>
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
-
-      body {
-        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-        line-height: 1.6;
-      }
-
-      .site-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 1.5rem 2rem;
-        border-bottom: 1px solid #e0e0e0;
-      }
-
-      .logo a {
-        font-size: 1.25rem;
-        font-weight: 700;
-        text-decoration: none;
-        color: #000;
-        letter-spacing: 0.5px;
-      }
-
-      nav {
-        display: flex;
-        gap: 2rem;
-      }
-
-      nav a {
-        text-decoration: none;
-        color: #666;
-        font-weight: 500;
-        font-size: 0.95rem;
-        letter-spacing: 0.5px;
-        transition: color 0.2s;
-      }
-
-      nav a:hover {
-        color: #000;
-      }
-
-      nav a.active {
-        color: #000;
-      }
-
-      main {
-        max-width: 1200px;
-        margin: 0 auto;
-        padding: 3rem 2rem;
-      }
-
-      h1 {
-        font-size: 2.5rem;
-        margin-bottom: 1.5rem;
-      }
-
+    @media (max-width: 768px) {
       p {
-        font-size: 2.2rem;
-        color: #444;
-        line-height: 1.4;
+        font-size: 1.5rem;
+        line-height: 1.5;
       }
-
-      /* Mobile optimizations */
-      @media (max-width: 768px) {
-        .site-header {
-          padding: 1rem 1.5rem;
-        }
-
-        .logo a {
-          font-size: 1rem;
-        }
-
-        nav {
-          gap: 1.5rem;
-        }
-
-        nav a {
-          font-size: 0.85rem;
-        }
-
-        main {
-          padding: 2rem 1.5rem;
-        }
-
-        p {
-          font-size: 1.5rem;
-          line-height: 1.5;
-        }
-      }
-    </style>
-  </body>
-</html>
+    }
+  </style>
+</BaseLayout>
