@@ -11,11 +11,11 @@
     <div class="container">
       <header class="site-header">
         <div class="logo">
-          <a href="/">ULTRATROPIC</a>
+          <a href="/"><img src="/logo.png" alt="Ultratropic" /></a>
         </div>
         <nav>
-          <a href="/work">WORK</a>
-          <a href="/about">INFO</a>
+          <a href="/work">Back</a>
+          <a href="/about">Info</a>
         </nav>
       </header>
 
@@ -27,29 +27,13 @@
             loop
             playsinline
             preload="auto"
+            class="landscape-video"
           >
             <source src="/projects/steve_madden-bts/sm-bts-landscape.mp4" type="video/mp4" />
           </video>
         </div>
       </main>
     </div>
-
-    <script>
-      const video = document.querySelector('video');
-
-      const attemptPlay = () => {
-        const playPromise = video.play();
-        if (playPromise !== undefined) {
-          playPromise.catch(() => {
-            // Autoplay was prevented
-          });
-        }
-      };
-
-      video.addEventListener('loadeddata', attemptPlay);
-      video.addEventListener('canplay', attemptPlay);
-      attemptPlay();
-    </script>
 
     <style>
       * {
@@ -74,27 +58,30 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 1.5rem 0;
+        padding: 1rem 0;
         border-bottom: 1px solid #e0e0e0;
       }
 
       .logo a {
-        font-size: 1.25rem;
-        font-weight: 700;
         text-decoration: none;
-        color: #000;
-        letter-spacing: 0.5px;
+        display: block;
+      }
+
+      .logo img {
+        height: 16.5px;
+        width: auto;
+        display: block;
       }
 
       nav {
         display: flex;
-        gap: 2rem;
+        gap: 1.5rem;
       }
 
       nav a {
         text-decoration: none;
-        color: #666;
-        font-weight: 500;
+        color: #aaa;
+        font-weight: 300;
         font-size: 0.95rem;
         letter-spacing: 0.5px;
         transition: color 0.2s;
@@ -110,7 +97,7 @@
 
       .project-container {
         width: 100%;
-        max-width: 100%;
+        position: relative;
       }
 
       video {
@@ -128,8 +115,8 @@
           padding: 1rem 0;
         }
 
-        .logo a {
-          font-size: 1rem;
+        .logo img {
+          height: 15.5px;
         }
 
         nav {

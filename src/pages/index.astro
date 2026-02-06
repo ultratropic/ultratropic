@@ -8,6 +8,16 @@
     <title>Ultratropic</title>
   </head>
   <body>
+    <header class="site-header">
+      <div class="logo">
+        <a href="/"><img src="/logo.png" alt="Ultratropic" /></a>
+      </div>
+      <nav>
+        <a href="/work">Work</a>
+        <a href="/about">Info</a>
+      </nav>
+    </header>
+
     <div class="container">
       <video
         id="video"
@@ -38,44 +48,39 @@
       const videoPortrait = document.getElementById('video-portrait');
       let isPlaying = false;
 
-      // Determine which video to use based on orientation
-      const isPortrait = window.matchMedia('(orientation: portrait)').matches;
-      const activeVideo = isPortrait ? videoPortrait : videoLandscape;
-      const inactiveVideo = isPortrait ? videoLandscape : videoPortrait;
+      // Get the currently visible video based on orientation
+      const getActiveVideo = () => {
+        const isPortrait = window.matchMedia('(orientation: portrait)').matches;
+        return isPortrait ? videoPortrait : videoLandscape;
+      };
 
-      // Remove the inactive video's source to prevent loading
-      const inactiveSource = inactiveVideo.querySelector('source');
-      if (inactiveSource) {
-        inactiveSource.removeAttribute('src');
-      }
-      inactiveVideo.load();
-
-      // Attempt to play immediately
+      // Attempt to play the visible video
       const attemptPlay = () => {
+        const activeVideo = getActiveVideo();
         const playPromise = activeVideo.play();
         if (playPromise !== undefined) {
           playPromise.then(() => {
             isPlaying = true;
           }).catch(() => {
-            // Autoplay was prevented
             isPlaying = false;
           });
         }
       };
 
-      // Try multiple strategies to ensure autoplay
-      activeVideo.addEventListener('loadeddata', attemptPlay);
-      activeVideo.addEventListener('canplay', attemptPlay);
-
-      // Also try immediately
-      attemptPlay();
-
-      activeVideo.addEventListener('play', () => {
-        isPlaying = true;
+      // Track play state for both videos
+      [videoLandscape, videoPortrait].forEach(video => {
+        video.addEventListener('loadeddata', attemptPlay);
+        video.addEventListener('canplay', attemptPlay);
+        video.addEventListener('play', () => { isPlaying = true; });
+        video.addEventListener('pause', () => { isPlaying = false; });
       });
 
-      activeVideo.addEventListener('pause', () => {
-        isPlaying = false;
+      // Initial play attempt
+      attemptPlay();
+
+      // Handle orientation changes
+      window.matchMedia('(orientation: portrait)').addEventListener('change', () => {
+        attemptPlay();
       });
 
       // Handle click - navigate to work page if video is playing, otherwise try to play
@@ -120,9 +125,7 @@
         left: 0;
         width: 100%;
         height: 100%;
-        -o-object-fit: cover;
         object-fit: cover;
-        -o-object-position: center;
         object-position: center;
       }
 
@@ -142,6 +145,77 @@
 
         .portrait-video {
           display: block;
+        }
+      }
+
+      /* Header styles */
+      .site-header {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 10;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1.5rem 2rem;
+      }
+
+      .site-header::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(to bottom, rgba(0, 0, 0, 0.4) 0%, transparent 100%);
+        pointer-events: none;
+      }
+
+      .site-header a {
+        color: #fff;
+        text-decoration: none;
+        position: relative;
+        transition: opacity 0.2s;
+      }
+
+      .site-header a:hover {
+        opacity: 0.7;
+      }
+
+      .logo img {
+        height: 16.5px;
+        width: auto;
+        display: block;
+      }
+
+      nav {
+        display: flex;
+        gap: 2rem;
+      }
+
+      nav a {
+        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        font-weight: 300;
+        font-size: 0.95rem;
+        letter-spacing: 0.5px;
+      }
+
+      @media (max-width: 768px) {
+        .site-header {
+          padding: 1rem 1.5rem;
+        }
+
+        .logo img {
+          height: 15.5px;
+        }
+
+        nav {
+          gap: 1.5rem;
+        }
+
+        nav a {
+          font-size: 0.85rem;
         }
       }
     </style>

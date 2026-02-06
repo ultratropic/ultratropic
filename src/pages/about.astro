@@ -8,19 +8,27 @@
     <title>Info | Ultratropic</title>
   </head>
   <body>
-    <header class="site-header">
-      <div class="logo">
-        <a href="/">ULTRATROPIC</a>
-      </div>
-      <nav>
-        <a href="/work">WORK</a>
-        <a href="/about" class="active">INFO</a>
-      </nav>
-    </header>
+    <div class="container">
+      <header class="site-header">
+        <div class="logo">
+          <a href="/"><img src="/logo.png" alt="Ultratropic" /></a>
+        </div>
+        <nav>
+          <a href="/work">Back</a>
+          <a href="/about" class="active">Info</a>
+        </nav>
+      </header>
 
-    <main>
-      <p>Ultratropic is a full-service creative production and post-production studio specializing in fashion, lifestyle, and entertainment. We've worked with clients like Nike, Visa, Walmart, Puma, Steve Madden, and Kappa. Our editorial work has appeared in Rolling Stone, GQ, Wall Street Journal, and Kaleidoscope, among others.</p>
-    </main>
+      <main>
+        <div class="bio">
+          <p>Ultratropic is a full-service creative production and post-production studio specializing in fashion, lifestyle, and entertainment. We've worked with clients like Nike, Visa, Walmart, Puma, Steve Madden, and Kappa. Our editorial work has appeared in Rolling Stone, GQ, Wall Street Journal, and Kaleidoscope, among others.</p>
+        </div>
+        <div class="contact">
+          <a href="https://instagram.com/ultratropic" target="_blank">@ultratropic</a>
+          <a href="mailto:studio@ultra-tropic.com">studio@ultra-tropic.com</a>
+        </div>
+      </main>
+    </div>
 
     <style>
       * {
@@ -34,31 +42,39 @@
         line-height: 1.6;
       }
 
+      .container {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 0 2rem;
+      }
+
       .site-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 1.5rem 2rem;
-        border-bottom: 1px solid #e0e0e0;
+        padding: 1rem 0;
       }
 
       .logo a {
-        font-size: 1.25rem;
-        font-weight: 700;
         text-decoration: none;
-        color: #000;
-        letter-spacing: 0.5px;
+        display: block;
+      }
+
+      .logo img {
+        height: 16.5px;
+        width: auto;
+        display: block;
       }
 
       nav {
         display: flex;
-        gap: 2rem;
+        gap: 1.5rem;
       }
 
       nav a {
         text-decoration: none;
-        color: #666;
-        font-weight: 500;
+        color: #aaa;
+        font-weight: 300;
         font-size: 0.95rem;
         letter-spacing: 0.5px;
         transition: color 0.2s;
@@ -73,30 +89,59 @@
       }
 
       main {
-        max-width: 1200px;
-        margin: 0 auto;
-        padding: 3rem 2rem;
+        display: grid;
+        grid-template-columns: 75% 25%;
+        gap: 2rem;
       }
 
-      h1 {
-        font-size: 2.5rem;
-        margin-bottom: 1.5rem;
+      .bio {
+        border-top: 1px solid #e0e0e0;
+        padding-top: 2rem;
+        padding-bottom: 2rem;
       }
 
       p {
-        font-size: 2.2rem;
+        font-size: 1.5rem;
+        font-weight: 300;
         color: #444;
-        line-height: 1.4;
+        letter-spacing: 0.5px;
+        line-height: 1.5;
+      }
+
+      .contact {
+        border-top: 1px solid #e0e0e0;
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      .contact a {
+        font-size: 0.95rem;
+        font-weight: 300;
+        color: #444;
+        letter-spacing: 0.5px;
+        text-decoration: none;
+        transition: color 0.2s;
+      }
+
+      .contact a:hover {
+        color: #000;
       }
 
       /* Mobile optimizations */
       @media (max-width: 768px) {
-        .site-header {
-          padding: 1rem 1.5rem;
+        .container {
+          padding: 0 1.5rem;
         }
 
-        .logo a {
-          font-size: 1rem;
+        .site-header {
+          padding: 1rem 0;
+        }
+
+        .logo img {
+          height: 15.5px;
         }
 
         nav {
@@ -108,12 +153,11 @@
         }
 
         main {
-          padding: 2rem 1.5rem;
+          grid-template-columns: 1fr;
         }
 
-        p {
-          font-size: 1.5rem;
-          line-height: 1.5;
+        .contact {
+          margin-top: 1rem;
         }
       }
     </style>

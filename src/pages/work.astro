@@ -11,18 +11,21 @@
     <div class="container">
       <header class="site-header">
         <div class="logo">
-          <a href="/">ULTRATROPIC</a>
+          <a href="/"><img src="/logo.png" alt="Ultratropic" /></a>
         </div>
         <nav>
-          <a href="/work" class="active">WORK</a>
-          <a href="/about">INFO</a>
+          <button class="filter-btn active" data-filter="all">All</button>
+          <button class="filter-btn" data-filter="motion">Motion</button>
+          <button class="filter-btn" data-filter="stills">Stills</button>
+          <a href="/about">Info</a>
         </nav>
       </header>
 
       <main>
+
       <div class="projects-grid">
-        <!-- Mackage Core -->
-        <div class="project-item">
+        <!-- Mackage S26 -->
+        <div class="project-item" data-type="motion">
           <div class="media-wrapper">
             <video
               autoplay
@@ -32,7 +35,7 @@
               preload="auto"
               class="landscape-video"
             >
-              <source src="/projects/mackage-core/Mackage-Core-Thumb.mp4" type="video/mp4" />
+              <source src="/projects/mackage-s26/mackage-s26-thumb.mp4" type="video/mp4" />
             </video>
             <video
               autoplay
@@ -42,41 +45,22 @@
               preload="auto"
               class="portrait-video"
             >
-              <source src="/projects/mackage-core/Mackage-Core-Thumb-Portrait.mp4" type="video/mp4" />
+              <source src="/projects/mackage-s26/mackage-s26-thumb-portrait.mp4" type="video/mp4" />
             </video>
           </div>
-          <div class="project-title">Mackage Core '25</div>
+          <div class="project-title">Mackage S26</div>
         </div>
 
-        <!-- Steve Madden - SP24 -->
-        <div class="project-item">
+        <!-- Merrell (photo) -->
+        <div class="project-item" data-type="stills">
           <div class="media-wrapper">
-            <video
-              autoplay
-              muted
-              loop
-              playsinline
-              preload="auto"
-              class="landscape-video"
-            >
-              <source src="/projects/steve_madden-sp24/SM-S24-Thumb.mp4" type="video/mp4" />
-            </video>
-            <video
-              autoplay
-              muted
-              loop
-              playsinline
-              preload="auto"
-              class="portrait-video"
-            >
-              <source src="/projects/steve_madden-sp24/SM-S24-Thumb-Portrait.mp4" type="video/mp4" />
-            </video>
+            <img src="/projects/merrell/000046630001.jpeg" alt="Merrell" loading="lazy" />
           </div>
-          <div class="project-title">Steve Madden S24</div>
+          <div class="project-title">Merrell</div>
         </div>
 
         <!-- Woolrich -->
-        <div class="project-item">
+        <div class="project-item" data-type="motion">
           <div class="media-wrapper">
             <video
               autoplay
@@ -102,8 +86,62 @@
           <div class="project-title">Woolrich</div>
         </div>
 
+        <!-- Steve Madden - SP24 -->
+        <div class="project-item" data-type="motion">
+          <div class="media-wrapper">
+            <video
+              autoplay
+              muted
+              loop
+              playsinline
+              preload="auto"
+              class="landscape-video"
+            >
+              <source src="/projects/steve_madden-sp24/SM-S24-Thumb.mp4" type="video/mp4" />
+            </video>
+            <video
+              autoplay
+              muted
+              loop
+              playsinline
+              preload="auto"
+              class="portrait-video"
+            >
+              <source src="/projects/steve_madden-sp24/SM-S24-Thumb-Portrait.mp4" type="video/mp4" />
+            </video>
+          </div>
+          <div class="project-title">Steve Madden S24</div>
+        </div>
+
+        <!-- Mackage Core -->
+        <div class="project-item" data-type="motion">
+          <div class="media-wrapper">
+            <video
+              autoplay
+              muted
+              loop
+              playsinline
+              preload="auto"
+              class="landscape-video"
+            >
+              <source src="/projects/mackage-core/Mackage-Core-Thumb.mp4" type="video/mp4" />
+            </video>
+            <video
+              autoplay
+              muted
+              loop
+              playsinline
+              preload="auto"
+              class="portrait-video"
+            >
+              <source src="/projects/mackage-core/Mackage-Core-Thumb-Portrait.mp4" type="video/mp4" />
+            </video>
+          </div>
+          <div class="project-title">Mackage Core '25</div>
+        </div>
+
         <!-- Steve Madden - BTS -->
-        <div class="project-item">
+        <div class="project-item" data-type="motion">
           <a href="/projects/steve-madden-bts" class="media-wrapper">
             <video
               autoplay
@@ -119,23 +157,15 @@
         </div>
 
         <!-- Stone Island (photo) -->
-        <div class="project-item">
+        <div class="project-item" data-type="stills">
           <div class="media-wrapper">
-            <img src="/projects/stone_island/000086880009.jpg" alt="Stone Island" />
+            <img src="/projects/stone_island/000086880009.jpg" alt="Stone Island" loading="lazy" />
           </div>
           <div class="project-title">Stone Island</div>
         </div>
 
-        <!-- Merrell (photo) -->
-        <div class="project-item">
-          <div class="media-wrapper">
-            <img src="/projects/merrell/000046660001.jpeg" alt="Merrell" />
-          </div>
-          <div class="project-title">Merrell</div>
-        </div>
-
         <!-- Steve Madden - Cool Planet -->
-        <div class="project-item">
+        <div class="project-item" data-type="motion">
           <a href="/projects/steve-madden-cool-planet" class="media-wrapper">
             <video
               autoplay
@@ -151,7 +181,7 @@
         </div>
 
         <!-- Major Lazer -->
-        <div class="project-item">
+        <div class="project-item" data-type="motion">
           <div class="media-wrapper">
             <video
               autoplay
@@ -167,7 +197,7 @@
         </div>
 
         <!-- Anitta -->
-        <div class="project-item">
+        <div class="project-item" data-type="motion">
           <div class="media-wrapper">
             <video
               autoplay
@@ -183,7 +213,7 @@
         </div>
 
         <!-- Deerdana -->
-        <div class="project-item">
+        <div class="project-item" data-type="motion">
           <div class="media-wrapper">
             <video
               autoplay
@@ -202,22 +232,43 @@
     </div>
 
     <script>
-      // Handle video selection based on device orientation
       document.addEventListener('DOMContentLoaded', () => {
         const projectItems = document.querySelectorAll('.project-item');
+        const filterButtons = document.querySelectorAll('.filter-btn');
         const isMobile = window.innerWidth <= 768;
         const isPortraitOrientation = window.matchMedia('(orientation: portrait)').matches;
         const shouldUsePortrait = isMobile && isPortraitOrientation;
 
+        // Handle video selection based on device orientation
         projectItems.forEach(item => {
-          const landscapeVideo = item.querySelector('.landscape-video') as HTMLVideoElement | null;
-          const portraitVideo = item.querySelector('.portrait-video') as HTMLVideoElement | null;
+          const landscapeVideo = item.querySelector('.landscape-video');
+          const portraitVideo = item.querySelector('.portrait-video');
 
-          // If there are both landscape and portrait videos
           if (landscapeVideo && portraitVideo) {
             const videoToRemove = shouldUsePortrait ? landscapeVideo : portraitVideo;
             videoToRemove.remove();
           }
+        });
+
+        // Filter functionality
+        filterButtons.forEach(button => {
+          button.addEventListener('click', () => {
+            const filter = button.getAttribute('data-filter');
+
+            // Update active button
+            filterButtons.forEach(btn => btn.classList.remove('active'));
+            button.classList.add('active');
+
+            // Filter projects
+            projectItems.forEach(item => {
+              const type = item.getAttribute('data-type');
+              if (filter === 'all' || type === filter) {
+                item.classList.remove('hidden');
+              } else {
+                item.classList.add('hidden');
+              }
+            });
+          });
         });
       });
     </script>
@@ -244,27 +295,30 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 1.5rem 0;
+        padding: 1rem 0;
         border-bottom: 1px solid #e0e0e0;
       }
 
       .logo a {
-        font-size: 1.25rem;
-        font-weight: 700;
         text-decoration: none;
-        color: #000;
-        letter-spacing: 0.5px;
+        display: block;
+      }
+
+      .logo img {
+        height: 16.5px;
+        width: auto;
+        display: block;
       }
 
       nav {
         display: flex;
-        gap: 2rem;
+        gap: 1.5rem;
       }
 
       nav a {
         text-decoration: none;
-        color: #666;
-        font-weight: 500;
+        color: #aaa;
+        font-weight: 300;
         font-size: 0.95rem;
         letter-spacing: 0.5px;
         transition: color 0.2s;
@@ -282,6 +336,27 @@
         padding: 2rem 0;
       }
 
+      .filter-btn {
+        background: none;
+        border: none;
+        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        font-size: 0.95rem;
+        font-weight: 300;
+        letter-spacing: 0.5px;
+        color: #aaa;
+        cursor: pointer;
+        padding: 0;
+        transition: color 0.2s;
+      }
+
+      .filter-btn:hover {
+        color: #000;
+      }
+
+      .filter-btn.active {
+        color: #000;
+      }
+
       .projects-grid {
         display: grid;
         grid-template-columns: repeat(2, 1fr);
@@ -292,6 +367,14 @@
         display: flex;
         flex-direction: column;
         gap: 0.5rem;
+        transition: opacity 0.3s ease;
+      }
+
+      .project-item.hidden {
+        opacity: 0;
+        pointer-events: none;
+        position: absolute;
+        visibility: hidden;
       }
 
       .media-wrapper {
@@ -308,19 +391,21 @@
       .media-wrapper video,
       .media-wrapper img {
         position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
+        top: 50%;
+        left: 50%;
+        width: calc(100% + 2px);
+        height: calc(100% + 2px);
         object-fit: cover;
         object-position: center;
-        transform: scale(1.01);
+        transform: translate(-50%, -50%);
       }
 
       .project-title {
         font-size: 0.875rem;
+        font-weight: 300;
         color: #000;
         text-align: left;
+        letter-spacing: 0.5px;
       }
 
       /* Mobile optimizations */
@@ -333,8 +418,8 @@
           padding: 1rem 0;
         }
 
-        .logo a {
-          font-size: 1rem;
+        .logo img {
+          height: 15.5px;
         }
 
         nav {

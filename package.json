@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@astrojs/cloudflare": "^12.6.12",
-    "astro": "^5.16.4"
+    "astro": "^5.16.4",
+    "expo-speech": "^14.0.8"
   }
 }
