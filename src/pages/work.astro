@@ -13,7 +13,14 @@
         <div class="logo">
           <a href="/"><img src="/logo.png" alt="Ultratropic" /></a>
         </div>
-        <nav>
+        <nav class="desktop-nav">
+          <button class="filter-btn active" data-filter="all">All</button>
+          <button class="filter-btn" data-filter="motion">Motion</button>
+          <button class="filter-btn" data-filter="stills">Stills</button>
+          <a href="/about">Info</a>
+        </nav>
+        <button class="menu-toggle" aria-label="Menu">Menu</button>
+        <nav class="mobile-nav">
           <button class="filter-btn active" data-filter="all">All</button>
           <button class="filter-btn" data-filter="motion">Motion</button>
           <button class="filter-btn" data-filter="stills">Stills</button>
@@ -49,6 +56,22 @@
             </video>
           </div>
           <div class="project-title">Mackage S26</div>
+        </div>
+
+        <!-- Anitta -->
+        <div class="project-item" data-type="motion">
+          <div class="media-wrapper">
+            <video
+              autoplay
+              muted
+              loop
+              playsinline
+              preload="auto"
+            >
+              <source src="/projects/anitta/Aniita-Thumb.mp4" type="video/mp4" />
+            </video>
+          </div>
+          <div class="project-title">Anitta</div>
         </div>
 
         <!-- Merrell (photo) -->
@@ -196,22 +219,6 @@
           <div class="project-title">Major Lazer</div>
         </div>
 
-        <!-- Anitta -->
-        <div class="project-item" data-type="motion">
-          <div class="media-wrapper">
-            <video
-              autoplay
-              muted
-              loop
-              playsinline
-              preload="auto"
-            >
-              <source src="/projects/anitta/Aniita-Thumb.mp4" type="video/mp4" />
-            </video>
-          </div>
-          <div class="project-title">Anitta</div>
-        </div>
-
         <!-- Deerdana -->
         <div class="project-item" data-type="motion">
           <div class="media-wrapper">
@@ -235,29 +242,42 @@
       document.addEventListener('DOMContentLoaded', () => {
         const projectItems = document.querySelectorAll('.project-item');
         const filterButtons = document.querySelectorAll('.filter-btn');
-        const isMobile = window.innerWidth <= 768;
-        const isPortraitOrientation = window.matchMedia('(orientation: portrait)').matches;
-        const shouldUsePortrait = isMobile && isPortraitOrientation;
+        const menuToggle = document.querySelector('.menu-toggle');
+        const mobileNav = document.querySelector('.mobile-nav');
 
-        // Handle video selection based on device orientation
+        // Always use landscape videos on the work page — remove portrait versions
         projectItems.forEach(item => {
-          const landscapeVideo = item.querySelector('.landscape-video');
           const portraitVideo = item.querySelector('.portrait-video');
-
-          if (landscapeVideo && portraitVideo) {
-            const videoToRemove = shouldUsePortrait ? landscapeVideo : portraitVideo;
-            videoToRemove.remove();
+          if (portraitVideo) {
+            portraitVideo.remove();
           }
         });
 
-        // Filter functionality
+        // Mobile menu toggle
+        if (menuToggle && mobileNav) {
+          menuToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isOpen = mobileNav.classList.toggle('open');
+            menuToggle.textContent = isOpen ? 'Close' : 'Menu';
+          });
+
+          // Close menu when clicking outside
+          document.addEventListener('click', (e) => {
+            if (!mobileNav.contains(e.target) && !menuToggle.contains(e.target)) {
+              mobileNav.classList.remove('open');
+              menuToggle.textContent = 'Menu';
+            }
+          });
+        }
+
+        // Filter functionality — sync active state across both navs
         filterButtons.forEach(button => {
           button.addEventListener('click', () => {
             const filter = button.getAttribute('data-filter');
 
-            // Update active button
+            // Update active button on ALL filter buttons (both navs)
             filterButtons.forEach(btn => btn.classList.remove('active'));
-            button.classList.add('active');
+            document.querySelectorAll(`.filter-btn[data-filter="${filter}"]`).forEach(btn => btn.classList.add('active'));
 
             // Filter projects
             projectItems.forEach(item => {
@@ -268,6 +288,12 @@
                 item.classList.add('hidden');
               }
             });
+
+            // Close mobile menu after selecting filter
+            if (mobileNav) {
+              mobileNav.classList.remove('open');
+              if (menuToggle) menuToggle.textContent = 'Menu';
+            }
           });
         });
       });
@@ -310,12 +336,12 @@
         display: block;
       }
 
-      nav {
+      .desktop-nav {
         display: flex;
         gap: 1.5rem;
       }
 
-      nav a {
+      .desktop-nav a {
         text-decoration: none;
         color: #aaa;
         font-weight: 300;
@@ -324,12 +350,31 @@
         transition: color 0.2s;
       }
 
-      nav a:hover {
+      .desktop-nav a:hover {
         color: #000;
       }
 
-      nav a.active {
+      .desktop-nav a.active {
         color: #000;
+      }
+
+      /* Menu toggle — hidden on desktop */
+      .menu-toggle {
+        display: none;
+        background: none;
+        border: none;
+        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        font-size: 0.85rem;
+        font-weight: 300;
+        letter-spacing: 0.5px;
+        color: #000;
+        cursor: pointer;
+        padding: 0;
+      }
+
+      /* Mobile nav — hidden by default */
+      .mobile-nav {
+        display: none;
       }
 
       main {
@@ -416,18 +461,55 @@
 
         .site-header {
           padding: 1rem 0;
+          flex-wrap: wrap;
+          position: relative;
         }
 
         .logo img {
           height: 15.5px;
         }
 
-        nav {
-          gap: 1.5rem;
+        /* Hide desktop nav, show menu toggle */
+        .desktop-nav {
+          display: none;
         }
 
-        nav a {
-          font-size: 0.85rem;
+        .menu-toggle {
+          display: block;
+        }
+
+        /* Mobile dropdown nav */
+        .mobile-nav {
+          display: none;
+          flex-direction: column;
+          gap: 0.75rem;
+          width: 100%;
+          padding: 1rem 0 0.5rem;
+          border-top: 1px solid #e0e0e0;
+          margin-top: 1rem;
+        }
+
+        .mobile-nav.open {
+          display: flex;
+        }
+
+        .mobile-nav a {
+          text-decoration: none;
+          color: #aaa;
+          font-weight: 300;
+          font-size: 0.9rem;
+          letter-spacing: 0.5px;
+          transition: color 0.2s;
+          text-align: left;
+        }
+
+        .mobile-nav a:hover {
+          color: #000;
+        }
+
+        .mobile-nav .filter-btn {
+          font-size: 0.9rem;
+          text-align: left;
         }
 
         main {
