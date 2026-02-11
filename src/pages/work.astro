@@ -1,10 +1,11 @@
 ---
-// work.astro
+// work.astro — Mosaic layout, centered frame, no cropping
 ---
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <title>Work | Ultratropic</title>
   </head>
   <body>
@@ -14,228 +15,106 @@
           <a href="/"><img src="/logo.png" alt="Ultratropic" /></a>
         </div>
         <nav class="desktop-nav">
-          <button class="filter-btn active" data-filter="all">All</button>
-          <button class="filter-btn" data-filter="motion">Motion</button>
-          <button class="filter-btn" data-filter="stills">Stills</button>
-          <a href="/about">Info</a>
+          <a href="/work" class="nav-link active">Work</a>
+          <a href="/info" class="nav-link">Info</a>
         </nav>
         <button class="menu-toggle" aria-label="Menu">Menu</button>
         <nav class="mobile-nav">
-          <button class="filter-btn active" data-filter="all">All</button>
-          <button class="filter-btn" data-filter="motion">Motion</button>
-          <button class="filter-btn" data-filter="stills">Stills</button>
-          <a href="/about">Info</a>
+          <a href="/work" class="nav-link active">Work</a>
+          <a href="/info" class="nav-link">Info</a>
+          <div class="mobile-filters">
+            <button class="filter-btn active" data-filter="all">All</button>
+            <button class="filter-btn" data-filter="motion">Motion</button>
+            <button class="filter-btn" data-filter="stills">Stills</button>
+          </div>
         </nav>
       </header>
 
-      <main>
-
-      <div class="projects-grid">
-        <!-- Mackage S26 -->
-        <div class="project-item" data-type="motion">
-          <div class="media-wrapper">
-            <video
-              autoplay
-              muted
-              loop
-              playsinline
-              preload="auto"
-              class="landscape-video"
-            >
-              <source src="/projects/mackage-s26/mackage-s26-thumb.mp4" type="video/mp4" />
-            </video>
-            <video
-              autoplay
-              muted
-              loop
-              playsinline
-              preload="auto"
-              class="portrait-video"
-            >
-              <source src="/projects/mackage-s26/mackage-s26-thumb-portrait.mp4" type="video/mp4" />
-            </video>
-          </div>
-          <div class="project-title">Mackage S26</div>
-        </div>
-
-        <!-- Anitta -->
-        <div class="project-item" data-type="motion">
-          <div class="media-wrapper">
-            <video
-              autoplay
-              muted
-              loop
-              playsinline
-              preload="auto"
-            >
-              <source src="/projects/anitta/Aniita-Thumb.mp4" type="video/mp4" />
-            </video>
-          </div>
-          <div class="project-title">Anitta</div>
-        </div>
-
-        <!-- Merrell (photo) -->
-        <div class="project-item" data-type="stills">
-          <div class="media-wrapper">
-            <img src="/projects/merrell/000046630001.jpeg" alt="Merrell" loading="lazy" />
-          </div>
-          <div class="project-title">Merrell</div>
-        </div>
-
-        <!-- Woolrich -->
-        <div class="project-item" data-type="motion">
-          <div class="media-wrapper">
-            <video
-              autoplay
-              muted
-              loop
-              playsinline
-              preload="auto"
-              class="landscape-video"
-            >
-              <source src="/projects/woolrich/WoolrichThumb.mp4" type="video/mp4" />
-            </video>
-            <video
-              autoplay
-              muted
-              loop
-              playsinline
-              preload="auto"
-              class="portrait-video"
-            >
-              <source src="/projects/woolrich/WoolrichThumb-Portrait.mp4" type="video/mp4" />
-            </video>
-          </div>
-          <div class="project-title">Woolrich</div>
-        </div>
-
-        <!-- Steve Madden - SP24 -->
-        <div class="project-item" data-type="motion">
-          <div class="media-wrapper">
-            <video
-              autoplay
-              muted
-              loop
-              playsinline
-              preload="auto"
-              class="landscape-video"
-            >
-              <source src="/projects/steve_madden-sp24/SM-S24-Thumb.mp4" type="video/mp4" />
-            </video>
-            <video
-              autoplay
-              muted
-              loop
-              playsinline
-              preload="auto"
-              class="portrait-video"
-            >
-              <source src="/projects/steve_madden-sp24/SM-S24-Thumb-Portrait.mp4" type="video/mp4" />
-            </video>
-          </div>
-          <div class="project-title">Steve Madden S24</div>
-        </div>
-
-        <!-- Mackage Core -->
-        <div class="project-item" data-type="motion">
-          <div class="media-wrapper">
-            <video
-              autoplay
-              muted
-              loop
-              playsinline
-              preload="auto"
-              class="landscape-video"
-            >
-              <source src="/projects/mackage-core/Mackage-Core-Thumb.mp4" type="video/mp4" />
-            </video>
-            <video
-              autoplay
-              muted
-              loop
-              playsinline
-              preload="auto"
-              class="portrait-video"
-            >
-              <source src="/projects/mackage-core/Mackage-Core-Thumb-Portrait.mp4" type="video/mp4" />
-            </video>
-          </div>
-          <div class="project-title">Mackage Core '25</div>
-        </div>
-
-        <!-- Steve Madden - BTS -->
-        <div class="project-item" data-type="motion">
-          <a href="/projects/steve-madden-bts" class="media-wrapper">
-            <video
-              autoplay
-              muted
-              loop
-              playsinline
-              preload="auto"
-            >
-              <source src="/projects/steve_madden-bts/Madden-bts-thumb.mp4" type="video/mp4" />
-            </video>
-          </a>
-          <div class="project-title">Steve Madden x Walmart</div>
-        </div>
-
-        <!-- Stone Island (photo) -->
-        <div class="project-item" data-type="stills">
-          <div class="media-wrapper">
-            <img src="/projects/stone_island/000086880009.jpg" alt="Stone Island" loading="lazy" />
-          </div>
-          <div class="project-title">Stone Island</div>
-        </div>
-
-        <!-- Steve Madden - Cool Planet -->
-        <div class="project-item" data-type="motion">
-          <a href="/projects/steve-madden-cool-planet" class="media-wrapper">
-            <video
-              autoplay
-              muted
-              loop
-              playsinline
-              preload="auto"
-            >
-              <source src="/projects/steve_madden-cool_planet/cool-planet-thumb.mp4" type="video/mp4" />
-            </video>
-          </a>
-          <div class="project-title">Steve Madden Cool Planet</div>
-        </div>
-
-        <!-- Major Lazer -->
-        <div class="project-item" data-type="motion">
-          <div class="media-wrapper">
-            <video
-              autoplay
-              muted
-              loop
-              playsinline
-              preload="auto"
-            >
-              <source src="/projects/major_lazer/major-lazer-thumb.mp4" type="video/mp4" />
-            </video>
-          </div>
-          <div class="project-title">Major Lazer</div>
-        </div>
-
-        <!-- Deerdana -->
-        <div class="project-item" data-type="motion">
-          <div class="media-wrapper">
-            <video
-              autoplay
-              muted
-              loop
-              playsinline
-              preload="auto"
-            >
-              <source src="/projects/deerdana/Deerdana-thumb.mp4" type="video/mp4" />
-            </video>
-          </div>
-          <div class="project-title">Deerdana</div>
-        </div>
+      <div class="filter-bar">
+        <button class="filter-btn active" data-filter="all">All</button>
+        <button class="filter-btn" data-filter="motion">Motion</button>
+        <button class="filter-btn" data-filter="stills">Stills</button>
       </div>
-    </main>
+
+      <main>
+        <div class="projects-grid">
+          <!-- Row 1: 2-up -->
+          <div class="project-row cols-2">
+            <div class="project-item" data-type="motion">
+              <video muted loop playsinline preload="none" data-src="/projects/mackage-s26/mackage-s26-thumb.mp4"></video>
+              <div class="project-title">MACKAGE S26</div>
+            </div>
+            <div class="project-item" data-type="stills">
+              <img data-src="/projects/supereme/supreme-169.jpg" alt="Supreme" />
+              <div class="project-title">SUPREME</div>
+            </div>
+          </div>
+
+          <!-- Row 2: full -->
+          <div class="project-row cols-1">
+            <div class="project-item" data-type="motion">
+              <video muted loop playsinline preload="none" data-src="/projects/steve_madden-s24/SM-S24-Thumb.mp4"></video>
+              <div class="project-title">STEVE MADDEN S24</div>
+            </div>
+          </div>
+
+          <!-- Row 3: 3-up -->
+          <div class="project-row cols-3">
+            <div class="project-item" data-type="stills">
+              <img data-src="/projects/stone_island/000086880009.jpg" alt="Stone Island" />
+              <div class="project-title">STONE ISLAND</div>
+            </div>
+            <div class="project-item" data-type="stills">
+              <img data-src="/projects/merrell/000046630001.jpeg" alt="Merrell" />
+              <div class="project-title">MERRELL</div>
+            </div>
+            <div class="project-item" data-type="motion">
+              <video muted loop playsinline preload="none" data-src="/projects/woolrich/Woolrich-Thumb.mp4"></video>
+              <div class="project-title">WOOLRICH</div>
+            </div>
+          </div>
+
+          <!-- Row 4: 2-up -->
+          <div class="project-row cols-2">
+            <div class="project-item" data-type="motion">
+              <video muted loop playsinline preload="none" data-src="/projects/anitta/Aniita-Thumb.mp4"></video>
+              <div class="project-title">ANITTA</div>
+            </div>
+            <div class="project-item" data-type="motion">
+              <video muted loop playsinline preload="none" data-src="/projects/mackage-core/Mackage-Core-Thumb.mp4"></video>
+              <div class="project-title">MACKAGE CORE '25</div>
+            </div>
+          </div>
+
+          <!-- Row 5: 3-up -->
+          <div class="project-row cols-3">
+            <div class="project-item" data-type="motion">
+              <video muted loop playsinline preload="none" data-src="/projects/deerdana/Deerdana-thumb.mp4"></video>
+              <div class="project-title">DEERDANA</div>
+            </div>
+            <div class="project-item" data-type="motion">
+              <a href="/projects/steve-madden-bts" class="media-link">
+                <video muted loop playsinline preload="none" data-src="/projects/steve_madden-bts/Madden-bts-thumb.mp4"></video>
+                <div class="project-title">STEVE MADDEN x WALMART</div>
+              </a>
+            </div>
+            <div class="project-item" data-type="motion">
+              <video muted loop playsinline preload="none" data-src="/projects/major_lazer/major-lazer-thumb.mp4"></video>
+              <div class="project-title">MAJOR LAZER</div>
+            </div>
+          </div>
+
+          <!-- Row 6: full -->
+          <div class="project-row cols-1">
+            <div class="project-item" data-type="motion">
+              <a href="/projects/steve-madden-cool-planet" class="media-link">
+                <video muted loop playsinline preload="none" data-src="/projects/steve_madden-cool_planet/cool-planet-thumb.mp4"></video>
+                <div class="project-title">STEVE MADDEN COOL PLANET</div>
+              </a>
+            </div>
+          </div>
+        </div>
+      </main>
     </div>
 
     <script>
@@ -245,13 +124,31 @@
         const menuToggle = document.querySelector('.menu-toggle');
         const mobileNav = document.querySelector('.mobile-nav');
 
-        // Always use landscape videos on the work page — remove portrait versions
-        projectItems.forEach(item => {
-          const portraitVideo = item.querySelector('.portrait-video');
-          if (portraitVideo) {
-            portraitVideo.remove();
-          }
-        });
+        // Lazy-load videos and images with Intersection Observer
+        const mediaObserver = new IntersectionObserver((entries) => {
+          entries.forEach(entry => {
+            if (entry.isIntersecting) {
+              entry.target.querySelectorAll('video[data-src]').forEach(video => {
+                if (!video.querySelector('source')) {
+                  const source = document.createElement('source');
+                  source.src = video.getAttribute('data-src');
+                  source.type = 'video/mp4';
+                  video.appendChild(source);
+                  video.load();
+                }
+                video.play().catch(() => {});
+              });
+              entry.target.querySelectorAll('img[data-src]').forEach(img => {
+                img.src = img.getAttribute('data-src');
+                img.removeAttribute('data-src');
+              });
+            } else {
+              entry.target.querySelectorAll('video').forEach(v => v.pause());
+            }
+          });
+        }, { rootMargin: '200px 0px' });
+
+        projectItems.forEach(item => mediaObserver.observe(item));
 
         // Mobile menu toggle
         if (menuToggle && mobileNav) {
@@ -261,7 +158,6 @@
             menuToggle.textContent = isOpen ? 'Close' : 'Menu';
           });
 
-          // Close menu when clicking outside
           document.addEventListener('click', (e) => {
             if (!mobileNav.contains(e.target) && !menuToggle.contains(e.target)) {
               mobileNav.classList.remove('open');
@@ -270,26 +166,38 @@
           });
         }
 
-        // Filter functionality — sync active state across both navs
+        // Filter with fade animation
         filterButtons.forEach(button => {
           button.addEventListener('click', () => {
             const filter = button.getAttribute('data-filter');
 
-            // Update active button on ALL filter buttons (both navs)
             filterButtons.forEach(btn => btn.classList.remove('active'));
             document.querySelectorAll(`.filter-btn[data-filter="${filter}"]`).forEach(btn => btn.classList.add('active'));
 
-            // Filter projects
             projectItems.forEach(item => {
               const type = item.getAttribute('data-type');
-              if (filter === 'all' || type === filter) {
-                item.classList.remove('hidden');
+              const shouldShow = filter === 'all' || type === filter;
+
+              if (!shouldShow) {
+                item.classList.add('fading');
+                setTimeout(() => {
+                  item.classList.add('hidden');
+                  item.classList.remove('fading');
+                }, 150);
               } else {
-                item.classList.add('hidden');
+                item.classList.remove('hidden');
+                item.classList.remove('fading');
               }
             });
 
-            // Close mobile menu after selecting filter
+            // Hide rows where all items are hidden
+            setTimeout(() => {
+              document.querySelectorAll('.project-row').forEach(row => {
+                const visibleItems = row.querySelectorAll('.project-item:not(.hidden)');
+                row.style.display = visibleItems.length === 0 ? 'none' : '';
+              });
+            }, 160);
+
             if (mobileNav) {
               mobileNav.classList.remove('open');
               if (menuToggle) menuToggle.textContent = 'Menu';
@@ -309,12 +217,14 @@
       body {
         font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
         line-height: 1.6;
+        background: #fff;
       }
 
       .container {
         max-width: 1400px;
         margin: 0 auto;
-        padding: 0 2rem;
+        padding: 0 1.5rem;
+        background: #fff;
       }
 
       .site-header {
@@ -322,7 +232,6 @@
         justify-content: space-between;
         align-items: center;
         padding: 1rem 0;
-        border-bottom: 1px solid #e0e0e0;
       }
 
       .logo a {
@@ -341,7 +250,7 @@
         gap: 1.5rem;
       }
 
-      .desktop-nav a {
+      .nav-link {
         text-decoration: none;
         color: #aaa;
         font-weight: 300;
@@ -350,42 +259,26 @@
         transition: color 0.2s;
       }
 
-      .desktop-nav a:hover {
+      .nav-link:hover {
         color: #000;
       }
 
-      .desktop-nav a.active {
+      .nav-link.active {
         color: #000;
       }
 
-      /* Menu toggle — hidden on desktop */
-      .menu-toggle {
-        display: none;
-        background: none;
-        border: none;
-        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-        font-size: 0.85rem;
-        font-weight: 300;
-        letter-spacing: 0.5px;
-        color: #000;
-        cursor: pointer;
-        padding: 0;
-      }
-
-      /* Mobile nav — hidden by default */
-      .mobile-nav {
-        display: none;
-      }
-
-      main {
-        padding: 2rem 0;
+      .filter-bar {
+        display: flex;
+        gap: 1.5rem;
+        padding: 0.75rem 0;
+        border-top: 1px solid #e0e0e0;
       }
 
       .filter-btn {
         background: none;
         border: none;
         font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-        font-size: 0.95rem;
+        font-size: 0.85rem;
         font-weight: 300;
         letter-spacing: 0.5px;
         color: #aaa;
@@ -402,75 +295,121 @@
         color: #000;
       }
 
+      .menu-toggle {
+        display: none;
+        background: none;
+        border: none;
+        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        font-size: 0.85rem;
+        font-weight: 300;
+        letter-spacing: 0.5px;
+        color: #000;
+        cursor: pointer;
+        padding: 0;
+      }
+
+      .mobile-nav {
+        display: none;
+      }
+
+      main {
+        padding: 0;
+      }
+
+      /* Flex-row mosaic — equal splits only, no cropping */
       .projects-grid {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 1.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+
+      .project-row {
+        display: flex;
+        gap: 3px;
+      }
+
+      .project-row > .project-item {
+        flex: 1;
       }
 
       .project-item {
-        display: flex;
-        flex-direction: column;
-        gap: 0.5rem;
-        transition: opacity 0.3s ease;
+        position: relative;
+        overflow: hidden;
+        transition: opacity 0.2s ease;
+        background: #111;
+        aspect-ratio: 16 / 9;
+      }
+
+      .project-item.fading {
+        opacity: 0;
       }
 
       .project-item.hidden {
-        opacity: 0;
-        pointer-events: none;
-        position: absolute;
-        visibility: hidden;
+        display: none;
       }
 
-      .media-wrapper {
-        position: relative;
+      .project-item video,
+      .project-item > img {
+        position: absolute;
+        top: 0;
+        left: 0;
         width: 100%;
-        aspect-ratio: 16 / 9;
-        overflow: hidden;
-        cursor: pointer;
-        background: #000;
+        height: 100%;
+        object-fit: cover;
+        object-position: center;
+        display: block;
+      }
+
+      .media-link {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
         display: block;
         text-decoration: none;
       }
 
-      .media-wrapper video,
-      .media-wrapper img {
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        width: calc(100% + 2px);
-        height: calc(100% + 2px);
+      .media-link video,
+      .media-link img {
+        width: 100%;
+        height: 100%;
         object-fit: cover;
         object-position: center;
-        transform: translate(-50%, -50%);
+        display: block;
       }
 
       .project-title {
-        font-size: 0.875rem;
-        font-weight: 300;
-        color: #000;
-        text-align: left;
-        letter-spacing: 0.5px;
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        padding: 1.25rem 1.5rem;
+        color: #fff;
+        font-size: 1.1rem;
+        letter-spacing: 0.08em;
+        font-weight: 400;
+        z-index: 2;
       }
 
-      /* Mobile optimizations */
+      /* Mobile */
       @media (max-width: 768px) {
-        .container {
-          padding: 0 1.5rem;
+        body {
+          background: #fff;
         }
 
         .site-header {
-          padding: 1rem 0;
-          flex-wrap: wrap;
-          position: relative;
+          padding: 0.75rem 0.75rem;
         }
 
         .logo img {
           height: 15.5px;
         }
 
-        /* Hide desktop nav, show menu toggle */
         .desktop-nav {
+          display: none;
+        }
+
+        .filter-bar {
           display: none;
         }
 
@@ -478,7 +417,6 @@
           display: block;
         }
 
-        /* Mobile dropdown nav */
         .mobile-nav {
           display: none;
           flex-direction: column;
@@ -486,39 +424,46 @@
           width: 100%;
           padding: 1rem 0 0.5rem;
           border-top: 1px solid #e0e0e0;
-          margin-top: 1rem;
+          margin-top: 0.75rem;
         }
 
         .mobile-nav.open {
           display: flex;
         }
 
-        .mobile-nav a {
-          text-decoration: none;
-          color: #aaa;
-          font-weight: 300;
+        .mobile-nav .nav-link {
           font-size: 0.9rem;
-          letter-spacing: 0.5px;
-          transition: color 0.2s;
           text-align: left;
         }
 
-        .mobile-nav a:hover {
-          color: #000;
+        .mobile-filters {
+          display: flex;
+          gap: 1rem;
+          padding-top: 0.5rem;
+          border-top: 1px solid #e0e0e0;
         }
 
-        .mobile-nav .filter-btn {
+        .mobile-filters .filter-btn {
           font-size: 0.9rem;
           text-align: left;
         }
 
         main {
-          padding: 1.5rem 0;
+          padding: 0;
         }
 
         .projects-grid {
-          grid-template-columns: 1fr;
-          gap: 1rem;
+          gap: 2px;
+        }
+
+        .project-row {
+          flex-direction: column;
+          gap: 2px;
+        }
+
+        .project-title {
+          font-size: 0.85rem;
+          padding: 0.75rem 1rem;
         }
       }
     </style>
