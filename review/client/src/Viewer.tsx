@@ -12,6 +12,8 @@ export default function Viewer({
   onClose,
   onToggle,
   onDelete,
+  onSetCover,
+  coverId,
   albumName,
 }: {
   images: Img[];
@@ -21,6 +23,9 @@ export default function Viewer({
   onToggle?: (id: string) => void;
   /** Owner only. */
   onDelete?: (id: string) => Promise<void>;
+  /** Owner only: make this frame the project's cover on the project list. */
+  onSetCover?: (id: string) => void;
+  coverId?: string | null;
   albumName?: string;
 }) {
   const img = images[index];
@@ -97,6 +102,18 @@ export default function Viewer({
           </button>
         ) : <span />}
         <span style={{ display: 'flex', gap: 18, alignItems: 'center' }}>
+          {onSetCover && (
+            img.id === coverId ? (
+              <span className="meta">Project cover</span>
+            ) : (
+              <button
+                className="text-btn"
+                onClick={(e) => { e.stopPropagation(); onSetCover(img.id); }}
+              >
+                Set as cover
+              </button>
+            )
+          )}
           {onDelete && (
             <button
               className="text-btn danger"

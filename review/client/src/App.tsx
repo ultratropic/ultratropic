@@ -75,12 +75,27 @@ function NewProject({ onCreated }: { onCreated: (p: { id: string }) => void }) {
 }
 
 /** The open project lives in the URL (/projects/<id>), so a refresh or the back button keeps you there. */
+type Layout = 'list' | 'grid';
+const LAYOUT_KEY = 'review-project-layout';
+function savedLayout(): Layout {
+  try {
+    return localStorage.getItem(LAYOUT_KEY) === 'list' ? 'list' : 'grid';
+  } catch {
+    return 'grid';
+  }
+}
+
 const projectFromPath = () => location.pathname.match(/^\/projects\/([A-Za-z0-9]+)/)?.[1] ?? null;
 
 export default function App() {
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [viewing, setViewingState] = useState<string | null>(projectFromPath);
+  const [layout, setLayout] = useState<Layout>(savedLayout);
+  const chooseLayout = (l: Layout) => {
+    setLayout(l);
+    try { localStorage.setItem(LAYOUT_KEY, l); } catch { /* private mode: just don't remember */ }
+  };
 
   const setViewing = useCallback((id: string | null) => {
     const path = id ? `/projects/${id}` : '/';
@@ -117,20 +132,62 @@ export default function App() {
     );
   }
 
+  // Plain click opens in place; cmd/ctrl-click still opens a new tab, since
+  // these are real links to /projects/<id>.
+  const open = (e: React.MouseEvent, id: string) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+    e.preventDefault();
+    setViewing(id);
+  };
+  const meta = (p: Project) => (
+    <>
+      {p.album_count} {p.album_count === 1 ? 'album' : 'albums'} · {p.image_count} images
+      {p.selected_count > 0 && ` · ${p.selected_count} selected`}
+    </>
+  );
+
   return (
-    <div className="wrap">
-      <Logo width={150} style={{ marginBottom: 14 }} />
-      <p className="sub">Review · Projects</p>
-      {projects.map((p) => (
-        <div className="row" key={p.id}>
-          <a href="#" onClick={(e) => { e.preventDefault(); setViewing(p.id); }}>{p.name}</a>
-          <span className="meta">
-            {p.album_count} {p.album_count === 1 ? 'album' : 'albums'} · {p.image_count} images
-            {p.selected_count > 0 && ` · ${p.selected_count} selected`}
-          </span>
+    <div className={`wrap${layout === 'grid' ? ' wrap-wide' : ''}`}>
+      <div className="dash-head">
+        <div>
+          <Logo width={150} style={{ marginBottom: 14 }} />
+          <p className="sub" style={{ margin: 0 }}>Review · Projects</p>
         </div>
+        {projects.length > 0 && (
+          <div className="view-toggle" role="group" aria-label="Layout">
+            <button className={layout === 'list' ? 'on' : ''} aria-pressed={layout === 'list'} onClick={() => chooseLayout('list')}>List</button>
+            <button className={layout === 'grid' ? 'on' : ''} aria-pressed={layout === 'grid'} onClick={() => chooseLayout('grid')}>Grid</button>
+          </div>
+        )}
+      </div>
+
+      {layout === 'list' && projects.map((p) => (
+        <a className="row row-link" key={p.id} href={`/projects/${p.id}`} onClick={(e) => open(e, p.id)}>
+          <span className="row-thumb">
+            {p.cover_thumb && <img src={`/i/${p.cover_thumb}`} alt="" loading="lazy" />}
+          </span>
+          <span className="row-name">{p.name}</span>
+          <span className="meta">{meta(p)}</span>
+        </a>
       ))}
-      {projects.length === 0 && <p className="sub">Nothing yet.</p>}
+
+      {layout === 'grid' && (
+        <div className="cards">
+          {projects.map((p) => (
+            <a className="card" key={p.id} href={`/projects/${p.id}`} onClick={(e) => open(e, p.id)}>
+              <span className="card-cover">
+                {p.cover_thumb
+                  ? <img src={`/i/${p.cover_thumb}`} alt="" loading="lazy" />
+                  : <span className="meta">No photos yet</span>}
+              </span>
+              <span className="card-name">{p.name}</span>
+              <span className="meta">{meta(p)}</span>
+            </a>
+          ))}
+        </div>
+      )}
+
+      {projects.length === 0 && <p className="sub" style={{ marginTop: 24 }}>Nothing yet.</p>}
       <NewProject onCreated={(p) => setViewing(p.id)} />
     </div>
   );

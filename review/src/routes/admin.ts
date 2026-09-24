@@ -39,7 +39,13 @@ admin.get('/projects', async (c) => {
             (SELECT COUNT(*) FROM albums    a WHERE a.project_id = p.id) AS album_count,
             (SELECT COUNT(*) FROM images    i WHERE i.project_id = p.id) AS image_count,
             (SELECT COUNT(*) FROM reviewers r WHERE r.project_id = p.id) AS reviewer_count,
-            (SELECT COUNT(DISTINCT s.image_id) FROM selections s WHERE s.project_id = p.id) AS selected_count
+            (SELECT COUNT(DISTINCT s.image_id) FROM selections s WHERE s.project_id = p.id) AS selected_count,
+            -- The chosen cover if it still exists, else the first frame of the shoot.
+            COALESCE(
+              (SELECT ci.thumb_key FROM images ci WHERE ci.id = p.cover_image_id AND ci.project_id = p.id),
+              (SELECT fi.thumb_key FROM images fi JOIN albums fa ON fa.id = fi.album_id
+                WHERE fi.project_id = p.id ORDER BY fa.seq, fi.seq LIMIT 1)
+            ) AS cover_thumb
        FROM projects p
       ORDER BY p.created_at DESC`,
   ).all();
@@ -185,6 +191,26 @@ admin.delete('/reviewers/:id', async (c) => {
   return c.json({ removed: r.display_name, selections: removed?.n ?? 0 });
 });
 
+/** Choose the project's cover image, or pass null to go back to the first frame. */
+admin.post('/projects/:pid/cover', async (c) => {
+  const projectId = c.req.param('pid');
+  const { imageId } = await c.req
+    .json<{ imageId?: string | null }>()
+    .catch(() => ({ imageId: undefined }));
+  if (imageId !== null && typeof imageId !== 'string') return c.json({ error: 'imageId required' }, 400);
+  if (imageId) {
+    const img = await c.env.DB.prepare(`SELECT id FROM images WHERE id = ? AND project_id = ?`)
+      .bind(imageId, projectId)
+      .first();
+    if (!img) return c.json({ error: 'image not in project' }, 404);
+  }
+  const res = await c.env.DB.prepare(`UPDATE projects SET cover_image_id = ? WHERE id = ?`)
+    .bind(imageId, projectId)
+    .run();
+  if (!res.meta.changes) return c.json({ error: 'project not found' }, 404);
+  return c.json({ coverImageId: imageId });
+});
+
 /** Hide a reviewer's name and picks from other reviewers, or show them again. */
 admin.post('/reviewers/:id/hidden', async (c) => {
   const { hidden } = await c.req.json<{ hidden?: boolean }>().catch(() => ({ hidden: undefined }));
@@ -207,6 +233,7 @@ admin.delete('/images/:id', async (c) => {
   await c.env.DB.batch([
     c.env.DB.prepare(`DELETE FROM selections WHERE image_id = ?`).bind(img.id),
     c.env.DB.prepare(`DELETE FROM images WHERE id = ?`).bind(img.id),
+    c.env.DB.prepare(`UPDATE projects SET cover_image_id = NULL WHERE cover_image_id = ?`).bind(img.id),
   ]);
   return c.json({ deleted: img.id });
 });
@@ -232,6 +259,10 @@ admin.delete('/albums/:id', async (c) => {
   await c.env.DB.batch([
     c.env.DB.prepare(
       `DELETE FROM selections WHERE image_id IN (SELECT id FROM images WHERE album_id = ?)`,
+    ).bind(albumId),
+    c.env.DB.prepare(
+      `UPDATE projects SET cover_image_id = NULL
+        WHERE cover_image_id IN (SELECT id FROM images WHERE album_id = ?)`,
     ).bind(albumId),
     c.env.DB.prepare(`DELETE FROM images WHERE album_id = ?`).bind(albumId),
     c.env.DB.prepare(`DELETE FROM albums WHERE id = ?`).bind(albumId),

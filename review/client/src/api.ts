@@ -28,4 +28,6 @@ export interface Project {
   image_count: number;
   reviewer_count: number;
   selected_count: number;
+  /** Thumbnail of the chosen cover, or of the first frame; null for an empty project. */
+  cover_thumb: string | null;
 }

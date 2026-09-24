@@ -19,11 +19,14 @@ interface Options {
  */
 export async function buildGallery(env: Env, o: Options) {
   const project = await env.DB.prepare(
-    `SELECT id, name, slug, preview_edge, password_hash IS NOT NULL AS has_password
+    `SELECT id, name, slug, preview_edge, cover_image_id, password_hash IS NOT NULL AS has_password
        FROM projects WHERE id = ?`,
   )
     .bind(o.projectId)
-    .first<{ id: string; name: string; slug: string; preview_edge: number; has_password: number }>();
+    .first<{
+      id: string; name: string; slug: string; preview_edge: number;
+      cover_image_id: string | null; has_password: number;
+    }>();
   if (!project) return null;
 
   const [albumsRes, imagesRes, selectionsRes, reviewersRes] = await Promise.all([
@@ -102,7 +105,7 @@ export async function buildGallery(env: Env, o: Options) {
       name: project.name,
       slug: o.includeSlug ? project.slug : null,
       previewEdge: project.preview_edge,
-      ...(o.admin ? { hasPassword: project.has_password === 1 } : {}),
+      ...(o.admin ? { hasPassword: project.has_password === 1, coverImageId: project.cover_image_id } : {}),
     },
     reviewerId: o.reviewerId,
     me: { id: o.reviewerId, name: me?.display_name ?? '' },

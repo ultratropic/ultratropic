@@ -19,7 +19,10 @@ interface Album extends ShareState { id: string; name: string }
 interface Reviewer { id: string; name: string; isMe: boolean; count: number; lastSeen?: number; hidden?: boolean }
 
 interface GalleryData {
-  project: { id: string; name: string; slug: string | null; previewEdge: number; hasPassword?: boolean };
+  project: {
+    id: string; name: string; slug: string | null; previewEdge: number;
+    hasPassword?: boolean; coverImageId?: string | null;
+  };
   me: { id: string; name: string };
   albums: Album[];
   reviewers: Reviewer[];
@@ -574,6 +577,14 @@ export default function Gallery({
           onClose={() => setOpenIndex(null)}
           onToggle={toggle}
           onDelete={admin ? deleteImage : undefined}
+          // With no cover chosen, the first frame of the shoot stands in.
+          coverId={data.project.coverImageId ?? images[0]?.id ?? null}
+          onSetCover={admin ? async (id) => {
+            await api(`/api/admin/projects/${data.project.id}/cover`, {
+              method: 'POST', body: JSON.stringify({ imageId: id }),
+            });
+            setData((d) => d && { ...d, project: { ...d.project, coverImageId: id } });
+          } : undefined}
           albumName={data.albums[visible[openIndex]!.album]?.name}
         />
       )}
