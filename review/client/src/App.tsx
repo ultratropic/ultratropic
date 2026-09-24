@@ -147,7 +147,7 @@ export default function App() {
   );
 
   return (
-    <div className={`wrap${layout === 'grid' ? ' wrap-wide' : ''}`}>
+    <div className="wrap dash">
       <div className="dash-head">
         <div>
           <Logo width={150} style={{ marginBottom: 14 }} />
@@ -155,8 +155,23 @@ export default function App() {
         </div>
         {projects.length > 0 && (
           <div className="view-toggle" role="group" aria-label="Layout">
-            <button className={layout === 'list' ? 'on' : ''} aria-pressed={layout === 'list'} onClick={() => chooseLayout('list')}>List</button>
-            <button className={layout === 'grid' ? 'on' : ''} aria-pressed={layout === 'grid'} onClick={() => chooseLayout('grid')}>Grid</button>
+            <button className={layout === 'list' ? 'on' : ''} aria-pressed={layout === 'list'}
+              aria-label="List view" title="List view" onClick={() => chooseLayout('list')}>
+              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                <rect x="2" y="3" width="12" height="2" rx="1" />
+                <rect x="2" y="7" width="12" height="2" rx="1" />
+                <rect x="2" y="11" width="12" height="2" rx="1" />
+              </svg>
+            </button>
+            <button className={layout === 'grid' ? 'on' : ''} aria-pressed={layout === 'grid'}
+              aria-label="Grid view" title="Grid view" onClick={() => chooseLayout('grid')}>
+              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                <rect x="2" y="2" width="5" height="5" rx="1" />
+                <rect x="9" y="2" width="5" height="5" rx="1" />
+                <rect x="2" y="9" width="5" height="5" rx="1" />
+                <rect x="9" y="9" width="5" height="5" rx="1" />
+              </svg>
+            </button>
           </div>
         )}
       </div>

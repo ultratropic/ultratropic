@@ -13,6 +13,7 @@
   :root { --bg: #0d0d0d; --fg: #f0f0f0; --muted: #808080; --line: #262626; --accent: #f0f0f0; }
 }
 * { box-sizing: border-box; }
+html { scrollbar-gutter: stable; }
 body {
   margin: 0;
   background: var(--bg);
@@ -217,13 +218,16 @@ button.ghost.danger:hover { border-color: #c0392b; }
 }
 
 /* ---- project page: list / grid ---- */
-.wrap-wide { max-width: 1120px; }
+/* One width for list and grid, so switching views never moves the page. */
+.dash { max-width: 960px; }
 .dash-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; margin-bottom: 36px; }
 .view-toggle { display: flex; border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
 .view-toggle button {
-  padding: 6px 14px; font-size: 12px; border: none; border-radius: 0;
+  display: flex; align-items: center; padding: 6px 10px; border: none; border-radius: 0;
   background: transparent; color: var(--muted);
 }
+.view-toggle button svg { fill: currentColor; display: block; }
+.view-toggle button:hover { color: var(--fg); }
 .view-toggle button.on { background: var(--line); color: var(--fg); }
 
 .row-link { color: inherit; text-decoration: none; align-items: center; }
