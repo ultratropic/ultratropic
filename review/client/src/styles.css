@@ -4,6 +4,9 @@
   --muted: #888;
   --line: #e4e4e4;
   --accent: #111;
+  /* "Selected": a deep, muted crimson — reads clearly on a photo edge and as a
+     fill behind white, without the neon of a pure red. */
+  --select: #a8343c;
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
@@ -93,13 +96,13 @@ section { margin-bottom: 40px; }
   -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
 }
 .tile:hover .heart, .heart.on, .heart:focus-visible { opacity: 1; }
-.heart.on { color: #ff4d5e; }
+.heart.on { background: var(--select); color: #fff; }
 .heart .count { font-size: 11px; color: #fff; font-variant-numeric: tabular-nums; }
 .heart.big {
   position: static; opacity: 1; font-size: 15px; padding: 9px 16px;
   background: transparent; border: 1px solid var(--line); color: var(--fg);
 }
-.heart.big.on { color: #ff4d5e; border-color: #ff4d5e; }
+.heart.big.on { background: var(--select); border-color: var(--select); color: #fff; }
 
 @media (max-width: 760px) {
   .gallery { flex-direction: column; }
@@ -202,5 +205,5 @@ button.ghost.danger:hover { border-color: #c0392b; }
    the tile's size and break the justified rows. */
 .tile.selected::after {
   content: ''; position: absolute; inset: 0; pointer-events: none;
-  border: 3px solid #ff4d5e;
+  border: 3px solid var(--select);
 }
