@@ -46,6 +46,9 @@ button.ghost { background: transparent; color: var(--fg); border-color: var(--li
 .row a { color: inherit; text-decoration: none; font-size: 16px; }
 .row a:hover { text-decoration: underline; }
 .meta { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* Counts stay on one line; sentences set in the same style must wrap, or they
+   push the page wider than a phone screen. */
+p.meta, div.meta { white-space: normal; }
 .drop {
   border: 1px dashed var(--line); border-radius: 4px; padding: 48px 24px;
   text-align: center; color: var(--muted); font-size: 14px; margin: 24px 0;
@@ -96,7 +99,14 @@ section { margin-bottom: 40px; }
   opacity: 0; transition: opacity 0.12s;
   -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
 }
-.tile:hover .heart, .heart.on, .heart:focus-visible { opacity: 1; }
+.tile:hover .heart, .heart.on, .heart.picked, .heart:focus-visible { opacity: 1; }
+/* Overlapping hearts, front one on top and brightest; the ones behind recede. */
+.heart .stack { display: inline-flex; }
+.heart .stack span { position: relative; }
+.heart .stack span + span { margin-left: -0.42em; }
+.heart .stack span:nth-child(1) { z-index: 3; }
+.heart .stack span:nth-child(2) { z-index: 2; opacity: 0.72; }
+.heart .stack span:nth-child(3) { z-index: 1; opacity: 0.48; }
 .heart.on { background: var(--select); color: #fff; }
 .heart .count { font-size: 11px; color: #fff; font-variant-numeric: tabular-nums; }
 .heart.big {
@@ -108,19 +118,22 @@ section { margin-bottom: 40px; }
 /* ---- phones: the sidebar becomes a slim bar + full-screen menu ---- */
 .mobile-bar, .side-close { display: none; }
 @media (max-width: 760px) {
-  :root { --bar-h: 52px; }
+  :root { --bar-h: 60px; }
   .gallery { display: block; }
   .mobile-bar {
-    display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    position: sticky; top: 0; z-index: 30; height: var(--bar-h); padding: 0 12px;
+    display: flex; align-items: center; justify-content: space-between; gap: 14px;
+    position: sticky; top: 0; z-index: 30; height: var(--bar-h); padding: 0 14px;
     background: var(--bg); border-bottom: 1px solid var(--line);
   }
   .mobile-menu {
-    display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 10px; margin-right: -6px;
-    background: transparent; color: var(--fg); border: none; font-size: 14px;
+    display: flex; align-items: center; gap: 10px; min-width: 0; height: 40px; padding: 0 14px;
+    background: transparent; color: var(--fg); font-size: 16px;
+    border: none; border-radius: 20px; margin-right: -10px;
   }
+  .mobile-menu:active { background: var(--line); }
+  .mobile-menu .meta { font-size: 14px; }
   .mobile-menu-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .mobile-menu svg { flex-shrink: 0; fill: currentColor; }
+  .mobile-menu svg { flex-shrink: 0; fill: currentColor; width: 20px; height: 20px; }
   .side { display: none; }
   .side.open {
     /* align-self must be reset: the desktop sidebar's flex-start also applies to a
@@ -280,7 +293,8 @@ button.ghost.danger:hover { border-color: #c0392b; }
 .card-name { font-size: 15px; }
 
 @media (max-width: 760px) {
-  .cards { grid-template-columns: repeat(2, 1fr); gap: 20px 12px; }
+  .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 12px; }
+  .card .meta { white-space: normal; }
   .row-link .meta { display: none; }
 }
 

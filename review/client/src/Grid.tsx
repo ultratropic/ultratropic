@@ -64,6 +64,38 @@ function layout(images: Img[], containerWidth: number): { rows: Row[]; total: nu
   return { rows, total: top };
 }
 
+/**
+ * One heart per person who picked the frame, overlapped like a stack of avatars,
+ * up to three; past three the number sits beside the stack. The badge colour
+ * says whether one of them is you: crimson if so, dark if it's only others.
+ * Shown whenever anyone has picked the frame, so a scan of the grid reads
+ * consensus without hovering.
+ */
+function HeartBadge({ img, onToggle }: { img: Img; onToggle: (id: string) => void }) {
+  const n = img.selects ?? 0;
+  const label = img.mine
+    ? `Deselect ${img.filename} (${n} ${n === 1 ? 'select' : 'selects'})`
+    : `Select ${img.filename}${n ? ` (${n} ${n === 1 ? 'select' : 'selects'})` : ''}`;
+  return (
+    <button
+      className={`heart${img.mine ? ' on' : ''}${n > 0 ? ' picked' : ''}`}
+      aria-pressed={!!img.mine}
+      aria-label={label}
+      title={n ? `${n} ${n === 1 ? 'select' : 'selects'}` : undefined}
+      onClick={(e) => { e.stopPropagation(); onToggle(img.id); }}
+    >
+      {n === 0 ? (
+        '♡'
+      ) : (
+        <span className="stack" aria-hidden="true">
+          {Array.from({ length: Math.min(n, 3) }, (_, i) => <span key={i}>♥</span>)}
+        </span>
+      )}
+      {n > 3 && <span className="count">{n}</span>}
+    </button>
+  );
+}
+
 export default function Grid({
   images,
   onOpen,
@@ -175,15 +207,7 @@ export default function Grid({
                 </button>
               )}
               {onToggle && (
-                <button
-                  className={`heart${img.mine ? ' on' : ''}`}
-                  aria-pressed={!!img.mine}
-                  aria-label={img.mine ? `Deselect ${img.filename}` : `Select ${img.filename}`}
-                  onClick={(e) => { e.stopPropagation(); onToggle(img.id); }}
-                >
-                  {img.mine ? '♥' : '♡'}
-                  {!!img.selects && img.selects > 0 && <span className="count">{img.selects}</span>}
-                </button>
+                <HeartBadge img={img} onToggle={onToggle} />
               )}
             </div>
           ))}

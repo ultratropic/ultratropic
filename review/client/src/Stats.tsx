@@ -54,6 +54,7 @@ export default function Stats({
   return (
     <div style={{ maxWidth: 1000 }}>
       <h3 className="stats-title">Reviewers</h3>
+      <div style={{ overflowX: 'auto' }}>
       <table className="table">
         <thead>
           <tr><th>Name</th><th className="num">Selects</th><th className="num">Last active</th><th /></tr>
@@ -86,6 +87,7 @@ export default function Stats({
           ))}
         </tbody>
       </table>
+      </div>
 
       <h3 className="stats-title">By album</h3>
       <div style={{ overflowX: 'auto' }}>

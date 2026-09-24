@@ -358,7 +358,7 @@ export default function Gallery({
   return (
     <div className="gallery">
       <div className="mobile-bar">
-        <Logo width={92} />
+        <Logo width={112} />
         <button className="mobile-menu" aria-expanded={menuOpen} aria-label={`Menu: ${viewLabel}`}
           onClick={() => setMenuOpen(true)}>
           <span className="mobile-menu-label">{viewLabel}</span>
