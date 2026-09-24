@@ -162,6 +162,40 @@ admin.delete('/projects/:id', async (c) => {
   return c.json({ deleted: project.name, images: keys.length, blobs: allKeys.length });
 });
 
+/**
+ * Remove a reviewer and every selection they made. Their browser still holds a
+ * signed session, so the reviewer routes re-check that the person exists and
+ * send them back to the join screen; rejoining starts them from nothing.
+ * The owner's own identity can't be removed this way.
+ */
+admin.delete('/reviewers/:id', async (c) => {
+  const r = await c.env.DB.prepare(`SELECT id, display_name, email_norm FROM reviewers WHERE id = ?`)
+    .bind(c.req.param('id'))
+    .first<{ id: string; display_name: string; email_norm: string }>();
+  if (!r) return c.json({ error: 'reviewer not found' }, 404);
+  if (r.email_norm === '__admin__') return c.json({ error: "can't remove the owner" }, 400);
+
+  const removed = await c.env.DB.prepare(`SELECT COUNT(*) n FROM selections WHERE reviewer_id = ?`)
+    .bind(r.id)
+    .first<{ n: number }>();
+  await c.env.DB.batch([
+    c.env.DB.prepare(`DELETE FROM selections WHERE reviewer_id = ?`).bind(r.id),
+    c.env.DB.prepare(`DELETE FROM reviewers WHERE id = ?`).bind(r.id),
+  ]);
+  return c.json({ removed: r.display_name, selections: removed?.n ?? 0 });
+});
+
+/** Hide a reviewer's name and picks from other reviewers, or show them again. */
+admin.post('/reviewers/:id/hidden', async (c) => {
+  const { hidden } = await c.req.json<{ hidden?: boolean }>().catch(() => ({ hidden: undefined }));
+  if (typeof hidden !== 'boolean') return c.json({ error: 'hidden: boolean required' }, 400);
+  const res = await c.env.DB.prepare(`UPDATE reviewers SET hidden = ? WHERE id = ?`)
+    .bind(hidden ? 1 : 0, c.req.param('id'))
+    .run();
+  if (!res.meta.changes) return c.json({ error: 'reviewer not found' }, 404);
+  return c.json({ hidden });
+});
+
 /** Remove one frame: its derivatives, its selections, its row. */
 admin.delete('/images/:id', async (c) => {
   const img = await c.env.DB.prepare(`SELECT id, thumb_key, preview_key FROM images WHERE id = ?`)

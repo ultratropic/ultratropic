@@ -68,10 +68,16 @@ export default function Grid({
   images,
   onOpen,
   onToggle,
+  onDelete,
+  showNames = false,
 }: {
   images: Img[];
   onOpen: (index: number) => void;
   onToggle?: (id: string) => void;
+  /** Owner only; shown where deleting is the point, e.g. reviewing duplicates. */
+  onDelete?: (img: Img) => void;
+  /** Filenames on the tiles — what tells two near-identical frames apart. */
+  showNames?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -158,6 +164,16 @@ export default function Grid({
                   style={{ display: 'block', width: '100%', height: '100%', objectFit: 'cover' }}
                 />
               </button>
+              {showNames && <span className="tile-name mono">{img.filename}</span>}
+              {onDelete && (
+                <button
+                  className="tile-delete"
+                  aria-label={`Delete ${img.filename}`}
+                  onClick={(e) => { e.stopPropagation(); onDelete(img); }}
+                >
+                  Delete
+                </button>
+              )}
               {onToggle && (
                 <button
                   className={`heart${img.mine ? ' on' : ''}`}

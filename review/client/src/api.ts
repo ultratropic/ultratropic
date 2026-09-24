@@ -1,3 +1,9 @@
+export class ApiError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+  }
+}
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     credentials: 'same-origin',
@@ -6,7 +12,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text || `${res.status}`);
+    throw new ApiError(text || `${res.status}`, res.status);
   }
   return res.json() as Promise<T>;
 }

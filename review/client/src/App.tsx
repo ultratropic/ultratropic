@@ -73,10 +73,25 @@ function NewProject({ onCreated }: { onCreated: (p: { id: string }) => void }) {
   );
 }
 
+/** The open project lives in the URL (/projects/<id>), so a refresh or the back button keeps you there. */
+const projectFromPath = () => location.pathname.match(/^\/projects\/([A-Za-z0-9]+)/)?.[1] ?? null;
+
 export default function App() {
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [viewing, setViewing] = useState<string | null>(null);
+  const [viewing, setViewingState] = useState<string | null>(projectFromPath);
+
+  const setViewing = useCallback((id: string | null) => {
+    const path = id ? `/projects/${id}` : '/';
+    if (location.pathname !== path) history.pushState(null, '', path);
+    setViewingState(id);
+  }, []);
+
+  useEffect(() => {
+    const onPop = () => setViewingState(projectFromPath());
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
 
   const load = useCallback(async () => {
     const { projects } = await api<{ projects: Project[] }>('/api/admin/projects');

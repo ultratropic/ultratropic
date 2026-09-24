@@ -34,7 +34,7 @@ function localTime(ms: number | null): string {
 /**
  * GET /projects/:pid/export?format=csv|txt&reviewer=all|<id>&album=<id>
  *
- * reviewer=all exports the union of everyone's selects; an id exports one
+ * reviewer=all exports the union of all selects; an id exports one
  * person's. Rows follow gallery order: album, then frame.
  */
 exp.get('/projects/:pid/export', async (c) => {
@@ -89,7 +89,7 @@ exp.get('/projects/:pid/export', async (c) => {
     return reviewerParam === 'all' || who.includes(reviewerParam);
   });
 
-  const who = reviewerParam === 'all' ? 'everyone' : slugify(reviewerName.get(reviewerParam)!);
+  const who = reviewerParam === 'all' ? 'all' : slugify(reviewerName.get(reviewerParam)!);
   const where = albumParam ? `-${slugify(albumName.get(albumParam)!)}` : '';
   const filename = `${slugify(project.name)}-selects-${who}${where}.${format}`;
 

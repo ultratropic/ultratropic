@@ -1,5 +1,5 @@
 interface Album { id: string; name: string }
-interface Reviewer { id: string; name: string; isMe: boolean; count: number; lastSeen?: number }
+interface Reviewer { id: string; name: string; isMe: boolean; count: number; lastSeen?: number; hidden?: boolean }
 interface Img { id: string; album: number; selects: number }
 
 function ago(ms?: number): string {
@@ -21,11 +21,15 @@ export default function Stats({
   images,
   reviewers,
   selectedBy,
+  onHide,
+  onRemove,
 }: {
   albums: Album[];
   images: Img[];
   reviewers: Reviewer[];
   selectedBy: Record<string, string[]>;
+  onHide: (id: string, hidden: boolean) => void;
+  onRemove: (r: Reviewer) => void;
 }) {
   const active = reviewers.filter((r) => r.count > 0);
   const pickedBy = new Map<string, Set<string>>();
@@ -51,13 +55,33 @@ export default function Stats({
     <div style={{ maxWidth: 1000 }}>
       <h3 className="stats-title">Reviewers</h3>
       <table className="table">
-        <thead><tr><th>Name</th><th className="num">Selects</th><th className="num">Last active</th></tr></thead>
+        <thead>
+          <tr><th>Name</th><th className="num">Selects</th><th className="num">Last active</th><th /></tr>
+        </thead>
         <tbody>
           {reviewers.map((r) => (
-            <tr key={r.id}>
-              <td>{r.name}{r.isMe && <span className="meta"> · you</span>}</td>
+            <tr key={r.id} className={r.hidden ? 'is-hidden' : undefined}>
+              <td>
+                {r.name}
+                {r.isMe && <span className="meta"> · you</span>}
+                {r.hidden && <span className="meta"> · hidden from reviewers</span>}
+              </td>
               <td className="num">{r.count}</td>
               <td className="num meta">{ago(r.lastSeen)}</td>
+              <td className="num actions">
+                <button
+                  className="text-btn"
+                  title={r.hidden
+                    ? 'Let other reviewers see their name and picks again'
+                    : 'Hide their name and picks from other reviewers. You still see them.'}
+                  onClick={() => onHide(r.id, !r.hidden)}
+                >
+                  {r.hidden ? 'Show' : 'Hide'}
+                </button>
+                {!r.isMe && (
+                  <button className="text-btn danger" onClick={() => onRemove(r)}>Remove</button>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -72,7 +96,7 @@ export default function Stats({
               <th className="num">Images</th>
               <th className="num">Selected</th>
               <th className="num" title="Picked by at least two people">2+</th>
-              <th className="num" title="Picked by everyone who has selected anything">All {active.length > 1 ? active.length : ''}</th>
+              <th className="num" title="Picked by every person who has selected anything">Unanimous</th>
               {active.map((r) => <th key={r.id} className="num">{r.name}</th>)}
             </tr>
           </thead>

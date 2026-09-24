@@ -180,3 +180,19 @@ button.ghost.danger:hover { border-color: #c0392b; }
   margin: 12px 0 4px 8px;
 }
 .you { color: var(--muted); font-weight: 400; }
+
+/* ---- duplicates view: names + delete on the tile ---- */
+.tile-name {
+  position: absolute; left: 0; right: 0; top: 0; padding: 5px 7px;
+  font-size: 11px; color: #fff; background: rgba(0, 0, 0, 0.55);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none;
+}
+.tile-delete {
+  position: absolute; right: 6px; bottom: 6px; padding: 3px 8px;
+  font-size: 12px; border: none; border-radius: 3px; cursor: pointer;
+  background: rgba(0, 0, 0, 0.55); color: #fff;
+}
+.tile-delete:hover { background: #c0392b; }
+.table td.actions { white-space: nowrap; }
+.table td.actions .text-btn { margin-left: 14px; }
+.table tr.is-hidden td:first-child { color: var(--muted); }

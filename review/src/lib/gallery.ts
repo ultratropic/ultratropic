@@ -49,10 +49,10 @@ export async function buildGallery(env: Env, o: Options) {
       .bind(o.projectId)
       .all<{ reviewer_id: string; image_id: string }>(),
     env.DB.prepare(
-      `SELECT id, display_name, last_seen_at FROM reviewers WHERE project_id = ? ORDER BY created_at`,
+      `SELECT id, display_name, last_seen_at, hidden FROM reviewers WHERE project_id = ? ORDER BY created_at`,
     )
       .bind(o.projectId)
-      .all<{ id: string; display_name: string; last_seen_at: number }>(),
+      .all<{ id: string; display_name: string; last_seen_at: number; hidden: number }>(),
   ]);
 
   const allowed = o.albumIds ? new Set(o.albumIds) : null;
@@ -61,12 +61,18 @@ export async function buildGallery(env: Env, o: Options) {
   const images = imagesRes.results.filter((i) => albumIndex.has(i.album_id));
   const visibleIds = new Set(images.map((i) => i.id));
 
+  // A hidden reviewer is invisible to everyone but the owner and themselves —
+  // their picks don't appear in filters, in heart counts, or anywhere else.
+  const hiddenFromMe = new Set(
+    o.admin ? [] : reviewersRes.results.filter((r) => r.hidden && r.id !== o.reviewerId).map((r) => r.id),
+  );
+
   // Only selections on frames this caller can see count toward anything they see.
   const selectionsByReviewer: Record<string, string[]> = {};
   const selectCount = new Map<string, number>();
   const mine = new Set<string>();
   for (const s of selectionsRes.results) {
-    if (!visibleIds.has(s.image_id)) continue;
+    if (!visibleIds.has(s.image_id) || hiddenFromMe.has(s.reviewer_id)) continue;
     (selectionsByReviewer[s.reviewer_id] ??= []).push(s.image_id);
     selectCount.set(s.image_id, (selectCount.get(s.image_id) ?? 0) + 1);
     if (s.reviewer_id === o.reviewerId) mine.add(s.image_id);
@@ -106,12 +112,13 @@ export async function buildGallery(env: Env, o: Options) {
       ...(o.admin ? { shareToken: a.share_token, hasPassword: a.has_password === 1 } : {}),
     })),
     reviewers: reviewersRes.results
+      .filter((r) => !hiddenFromMe.has(r.id))
       .map((r) => ({
         id: r.id,
         name: r.display_name,
         isMe: r.id === o.reviewerId,
         count: selectionsByReviewer[r.id]?.length ?? 0,
-        ...(o.admin ? { lastSeen: r.last_seen_at } : {}),
+        ...(o.admin ? { lastSeen: r.last_seen_at, hidden: r.hidden === 1 } : {}),
       }))
       .filter((r) => r.isMe || r.count > 0 || o.admin),
     selectionsByReviewer,

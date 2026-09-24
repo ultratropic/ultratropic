@@ -85,11 +85,37 @@ function passwordFor(t: Target): { hash: string; salt: string } | null {
   return null;
 }
 
+/** A session whose reviewer has been removed is no session: clear it. */
+async function liveSession(c: Ctx, t: Target): Promise<ReviewerSession | null> {
+  const s = await readReviewerFor(c, t.project.id);
+  if (!s) return null;
+  const exists = await c.env.DB.prepare(`SELECT 1 FROM reviewers WHERE id = ? AND project_id = ?`)
+    .bind(s.rid, t.project.id)
+    .first();
+  if (exists) return s;
+  clearReviewerCookie(c, t.project.id);
+  return null;
+}
+
 const covers = (s: ReviewerSession, t: Target) => (t.album ? canSeeAlbum(s, t.album.id) : s.all);
 
 function extend(s: Omit<ReviewerSession, 'exp'>, t: Target): Omit<ReviewerSession, 'exp'> {
   if (!t.album) return { ...s, all: true };
   return { ...s, albums: [...new Set([...s.albums, t.album.id])] };
+}
+
+/**
+ * How many picks this reviewer is allowed to know a frame has: hidden people's
+ * picks are left out, except their own. Returned after every toggle, so it must
+ * agree with the gallery or the number would give a hidden reviewer away.
+ */
+async function visibleCount(c: Ctx, imageId: string, viewerId: string): Promise<{ n: number } | null> {
+  return c.env.DB.prepare(
+    `SELECT COUNT(*) n FROM selections s JOIN reviewers r ON r.id = s.reviewer_id
+      WHERE s.image_id = ? AND (r.hidden = 0 OR r.id = ?)`,
+  )
+    .bind(imageId, viewerId)
+    .first<{ n: number }>();
 }
 
 export function reviewerRoutes(resolve: Resolve) {
@@ -105,7 +131,7 @@ export function reviewerRoutes(resolve: Resolve) {
   async function requireAccess(c: Ctx): Promise<{ t: Target; s: ReviewerSession } | Response> {
     const t = await load(c);
     if (!t) return c.json({ error: 'not found' }, 404);
-    const s = await readReviewerFor(c, t.project.id);
+    const s = await liveSession(c, t);
     if (!s || !covers(s, t)) return c.json({ error: 'not joined' }, 401);
     return { t, s };
   }
@@ -114,7 +140,7 @@ export function reviewerRoutes(resolve: Resolve) {
   r.get('/:key', async (c) => {
     const t = await load(c);
     if (!t) return c.json({ error: 'not found' }, 404);
-    const s = await readReviewerFor(c, t.project.id);
+    const s = await liveSession(c, t);
     let reviewerName: string | null = null;
     if (s) {
       const row = await c.env.DB.prepare(`SELECT display_name FROM reviewers WHERE id = ?`)
@@ -147,7 +173,7 @@ export function reviewerRoutes(resolve: Resolve) {
 
     // Someone already identified in this project (another album link, say) just
     // gains this album — no second round of name and email.
-    const s = await readReviewerFor(c, t.project.id);
+    const s = await liveSession(c, t);
     if (s) {
       await issueReviewerCookie(c, extend(s, t));
       return c.json({ ok: true, joined: true });
@@ -210,7 +236,7 @@ export function reviewerRoutes(resolve: Resolve) {
 
     // Keep any access this device already had in the project — unless it belonged
     // to someone else, in which case start clean.
-    const prior = await readReviewerFor(c, t.project.id);
+    const prior = await liveSession(c, t);
     const base =
       prior && prior.rid === reviewerId
         ? prior
@@ -272,9 +298,7 @@ export function reviewerRoutes(resolve: Resolve) {
       .bind(gate.t.project.id, imageId, gate.s.rid, Date.now())
       .run();
 
-    const count = await c.env.DB.prepare(`SELECT COUNT(*) n FROM selections WHERE image_id = ?`)
-      .bind(imageId)
-      .first<{ n: number }>();
+    const count = await visibleCount(c, imageId, gate.s.rid);
     return c.json({ selected: true, count: count?.n ?? 1 });
   });
 
@@ -288,9 +312,7 @@ export function reviewerRoutes(resolve: Resolve) {
       .bind(imageId, gate.s.rid)
       .run();
 
-    const count = await c.env.DB.prepare(`SELECT COUNT(*) n FROM selections WHERE image_id = ?`)
-      .bind(imageId)
-      .first<{ n: number }>();
+    const count = await visibleCount(c, imageId, gate.s.rid);
     return c.json({ selected: false, count: count?.n ?? 0 });
   });
 

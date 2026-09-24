@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { api } from './api';
+import { api, ApiError } from './api';
 import Grid, { type Img } from './Grid';
 import Viewer from './Viewer';
 import Uploader from './Uploader';
@@ -15,7 +15,7 @@ export interface GalleryImg extends Img {
 }
 
 interface Album extends ShareState { id: string; name: string }
-interface Reviewer { id: string; name: string; isMe: boolean; count: number; lastSeen?: number }
+interface Reviewer { id: string; name: string; isMe: boolean; count: number; lastSeen?: number; hidden?: boolean }
 
 interface GalleryData {
   project: { id: string; name: string; slug: string | null; previewEdge: number; hasPassword?: boolean };
@@ -33,6 +33,33 @@ export type Filter =
   | { kind: 'dup' }
   | { kind: 'reviewer'; id: string };
 
+/** ?show=mine | all | duplicates | stats, or ?person=<id>. Absent means all photos. */
+function viewFromUrl(): { filter: Filter; stats: boolean } {
+  const q = new URLSearchParams(location.search);
+  const person = q.get('person');
+  if (person) return { filter: { kind: 'reviewer', id: person }, stats: false };
+  switch (q.get('show')) {
+    case 'mine': return { filter: { kind: 'mine' }, stats: false };
+    case 'all': return { filter: { kind: 'any' }, stats: false };
+    case 'duplicates': return { filter: { kind: 'dup' }, stats: false };
+    case 'stats': return { filter: { kind: 'all' }, stats: true };
+    default: return { filter: { kind: 'all' }, stats: false };
+  }
+}
+
+function viewToQuery(filter: Filter, stats: boolean): string {
+  if (stats) return '?show=stats';
+  switch (filter.kind) {
+    case 'mine': return '?show=mine';
+    case 'any': return '?show=all';
+    case 'dup': return '?show=duplicates';
+    case 'reviewer': return `?person=${filter.id}`;
+    default: return '';
+  }
+}
+
+const scrollKey = () => `review-scroll:${location.pathname}${location.search}`;
+
 export default function Gallery({
   base,
   admin,
@@ -47,16 +74,35 @@ export default function Gallery({
   const [images, setImages] = useState<GalleryImg[]>([]);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const [activeAlbum, setActiveAlbum] = useState(0);
-  const [mode, setMode] = useState<'browse' | 'upload' | 'stats'>('browse');
-  const [filter, setFilter] = useState<Filter>({ kind: 'all' });
+  const [initialView] = useState(viewFromUrl);
+  const [mode, setMode] = useState<'browse' | 'upload' | 'stats'>(initialView.stats ? 'stats' : 'browse');
+  const [filter, setFilter] = useState<Filter>(initialView.filter);
+  const restored = useRef(false);
   const [selectedBy, setSelectedBy] = useState<Record<string, string[]>>({});
   const [sharing, setSharing] = useState<string | null>(null);
   const sectionRefs = useRef<Array<HTMLElement | null>>([]);
   const imagesRef = useRef<GalleryImg[]>([]);
   useEffect(() => { imagesRef.current = images; }, [images]);
 
+  const [loadError, setLoadError] = useState('');
+
+  /** The owner removed this reviewer: start over at the join screen. */
+  const onRemoved = useCallback((err: unknown) => {
+    if (!admin && err instanceof ApiError && err.status === 401) {
+      location.reload();
+      return true;
+    }
+    return false;
+  }, [admin]);
+
   const loadGallery = useCallback(async () => {
-    const d = await api<GalleryData>(`${base}/gallery`);
+    let d: GalleryData;
+    try {
+      d = await api<GalleryData>(`${base}/gallery`);
+    } catch (err) {
+      if (!onRemoved(err)) setLoadError('Could not load the gallery. Check your connection and reload.');
+      return;
+    }
     setData(d);
     setImages(
       d.rows.map((r) => ({
@@ -75,9 +121,54 @@ export default function Gallery({
     setSelectedBy(d.selectionsByReviewer ?? {});
     // An empty project has nothing to browse — go straight to adding photos.
     setMode((m) => (d.rows.length === 0 ? 'upload' : m === 'upload' ? 'browse' : m));
-  }, [base]);
+  }, [base, onRemoved]);
 
   useEffect(() => { void loadGallery(); }, [loadGallery]);
+
+  // A saved ?person= link for someone since removed or hidden: fall back to everything.
+  useEffect(() => {
+    if (data && filter.kind === 'reviewer' && !data.reviewers.some((r) => r.id === filter.id)) {
+      setFilter({ kind: 'all' });
+    }
+  }, [data, filter]);
+
+  useEffect(() => {
+    if (mode === 'upload') return;
+    const query = viewToQuery(filter, mode === 'stats');
+    if (location.search !== query) history.replaceState(null, '', location.pathname + query);
+  }, [filter, mode]);
+
+  // Remember scroll position per view, and put it back after a refresh. The
+  // grids size themselves after first render, so retry until the page is tall
+  // enough to scroll to the saved spot.
+  useEffect(() => {
+    let t = 0;
+    const save = () => {
+      clearTimeout(t);
+      t = window.setTimeout(() => {
+        try { sessionStorage.setItem(scrollKey(), String(Math.round(window.scrollY))); } catch { /* private mode */ }
+      }, 150);
+    };
+    window.addEventListener('scroll', save, { passive: true });
+    return () => { window.removeEventListener('scroll', save); clearTimeout(t); };
+  }, []);
+
+  useEffect(() => {
+    if (restored.current || images.length === 0 || mode !== 'browse') return;
+    restored.current = true;
+    let target = 0;
+    try { target = Number(sessionStorage.getItem(scrollKey()) ?? 0); } catch { /* private mode */ }
+    if (!target) return;
+    let tries = 0;
+    const attempt = () => {
+      if (document.documentElement.scrollHeight >= target + window.innerHeight || tries++ > 20) {
+        window.scrollTo(0, target);
+      } else {
+        setTimeout(attempt, 50);
+      }
+    };
+    setTimeout(attempt, 0);
+  }, [images.length, mode]);
 
   /**
    * Optimistic: the heart fills on click and the request settles behind it.
@@ -110,18 +201,22 @@ export default function Gallery({
           { method: wasSelected ? 'DELETE' : 'PUT' },
         );
         apply(res.selected, res.count);
-      } catch {
+      } catch (err) {
         apply(previous.mine, previous.selects);
+        onRemoved(err);
       }
     },
-    [base, data],
+    [base, data, onRemoved],
   );
 
   const deleteImage = useCallback(async (id: string) => {
     await api(`/api/admin/images/${id}`, { method: 'DELETE' });
     setImages((list) => list.filter((img) => img.id !== id));
     setSelectedBy((m) => Object.fromEntries(Object.entries(m).map(([k, v]) => [k, v.filter((x) => x !== id)])));
-  }, []);
+    // Duplicate flags are computed across the project on the server; deleting one
+    // of a pair un-flags the survivor, so refresh rather than guess.
+    void loadGallery();
+  }, [loadGallery]);
 
   const visible = useMemo(() => {
     switch (filter.kind) {
@@ -200,7 +295,7 @@ export default function Gallery({
     return () => window.removeEventListener('keydown', onKey);
   }, [openIndex, visible, toggle]);
 
-  if (!data) return <div className="wrap"><p className="sub">Loading…</p></div>;
+  if (!data) return <div className="wrap"><p className="sub">{loadError || 'Loading…'}</p></div>;
 
   const reviewers = data.reviewers.map((r) => ({ ...r, count: selectedBy[r.id]?.length ?? 0 }));
   const people = reviewers.filter((r) => r.count > 0);
@@ -211,7 +306,7 @@ export default function Gallery({
   // Export follows the current filter: filtered to Alice, you export Alice's.
   const exportWho = filter.kind === 'mine' ? data.me.id : filter.kind === 'reviewer' ? filter.id : 'all';
   const exportLabel =
-    exportWho === 'all' ? "Everyone's selects"
+    exportWho === 'all' ? 'All selects'
       : exportWho === data.me.id ? 'My selects'
         : `${reviewers.find((r) => r.id === exportWho)?.name ?? 'Their'}'s selects`;
   const exportCount = exportWho === 'all' ? anyCount : (selectedBy[exportWho]?.length ?? 0);
@@ -246,7 +341,7 @@ export default function Gallery({
           {([
             { key: 'all', label: 'All photos', n: images.length },
             { key: 'mine', label: 'My selects', n: mineCount },
-            { key: 'any', label: "Everyone's selects", n: anyCount },
+            { key: 'any', label: 'All selects', n: anyCount },
           ] as const).map((f) => (
             <button
               key={f.key}
@@ -266,6 +361,7 @@ export default function Gallery({
             >
               <span className="side-name">
                 {r.name}{r.isMe && <span className="you"> · you</span>}
+                {admin && r.hidden && <span className="you" title="Hidden from other reviewers"> · hidden</span>}
               </span>
               <span className="meta">{r.count}</span>
             </button>
@@ -285,7 +381,7 @@ export default function Gallery({
               className={`side-link${mode === 'stats' ? ' active' : ''}`}
               onClick={() => setMode(mode === 'stats' ? 'browse' : 'stats')}
             >
-              <span className="side-name">Stats</span>
+              <span className="side-name">People &amp; stats</span>
             </button>
           )}
         </nav>
@@ -381,9 +477,34 @@ export default function Gallery({
         )}
 
         {mode === 'stats' && (
-          <Stats albums={data.albums} images={images} reviewers={reviewers} selectedBy={selectedBy} />
+          <Stats
+            albums={data.albums}
+            images={images}
+            reviewers={reviewers}
+            selectedBy={selectedBy}
+            onHide={async (id, hidden) => {
+              await api(`/api/admin/reviewers/${id}/hidden`, { method: 'POST', body: JSON.stringify({ hidden }) });
+              void loadGallery();
+            }}
+            onRemove={async (r) => {
+              const ok = window.confirm(
+                `Remove ${r.name}?\n\nTheir ${r.count} ${r.count === 1 ? 'select is' : 'selects are'} deleted permanently. ` +
+                `If they open the link again they start from scratch — to keep them out, change the password.`,
+              );
+              if (!ok) return;
+              await api(`/api/admin/reviewers/${r.id}`, { method: 'DELETE' });
+              if (filter.kind === 'reviewer' && filter.id === r.id) setFilter({ kind: 'all' });
+              void loadGallery();
+            }}
+          />
         )}
 
+        {mode === 'browse' && filter.kind === 'dup' && visible.length > 0 && (
+          <p className="meta" style={{ margin: '4px 0 16px', maxWidth: 640 }}>
+            Frames that would match the same RAW in Capture One (e.g. <span className="mono">X.jpg</span> and{' '}
+            <span className="mono">X 1.jpg</span>), or the same file uploaded twice. Delete the copy you don't want.
+          </p>
+        )}
         {mode === 'browse' && filter.kind !== 'all' && visible.length === 0 && (
           <p className="sub" style={{ padding: '24px 0' }}>
             {filter.kind === 'dup' ? 'No duplicates.' : 'Nothing selected yet.'}
@@ -433,6 +554,10 @@ export default function Gallery({
                   if (img) setOpenIndex(indexOf.get(img.id) ?? null);
                 }}
                 onToggle={toggle}
+                showNames={admin && filter.kind === 'dup'}
+                onDelete={admin && filter.kind === 'dup' ? (img) => {
+                  if (window.confirm(`Delete ${img.filename}? This cannot be undone.`)) void deleteImage(img.id);
+                } : undefined}
               />
             </section>
           );
