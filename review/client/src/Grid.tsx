@@ -145,7 +145,7 @@ export default function Grid({
           style={{ position: 'absolute', top: row.top, left: 0, display: 'flex', gap: GAP }}
         >
           {row.items.map(({ img, w, h }) => (
-            <div key={img.id} className="tile" style={{ width: w, height: h }}>
+            <div key={img.id} className={`tile${img.mine ? ' selected' : ''}`} style={{ width: w, height: h }}>
               <button
                 onClick={() => onOpen(indexOf.get(img.id)!)}
                 title={img.filename}

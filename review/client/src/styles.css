@@ -196,3 +196,11 @@ button.ghost.danger:hover { border-color: #c0392b; }
 .table td.actions { white-space: nowrap; }
 .table td.actions .text-btn { margin-left: 14px; }
 .table tr.is-hidden td:first-child { color: var(--muted); }
+
+/* Your own selects, framed in the heart's red so a scan of the grid shows them
+   at a glance. Drawn as an inset overlay, not a border: a border would change
+   the tile's size and break the justified rows. */
+.tile.selected::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  border: 3px solid #ff4d5e;
+}
