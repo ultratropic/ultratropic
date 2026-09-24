@@ -202,6 +202,8 @@ export default function Gallery({
 
   if (!data) return <div className="wrap"><p className="sub">Loading…</p></div>;
 
+  const reviewers = data.reviewers.map((r) => ({ ...r, count: selectedBy[r.id]?.length ?? 0 }));
+  const people = reviewers.filter((r) => r.count > 0);
   const mineCount = images.filter((i) => i.mine).length;
   const anyCount = images.filter((i) => i.selects > 0).length;
   const dupCount = images.filter((i) => i.dup).length;
@@ -211,7 +213,7 @@ export default function Gallery({
   const exportLabel =
     exportWho === 'all' ? "Everyone's selects"
       : exportWho === data.me.id ? 'My selects'
-        : `${data.reviewers.find((r) => r.id === exportWho)?.name ?? 'Their'}'s selects`;
+        : `${reviewers.find((r) => r.id === exportWho)?.name ?? 'Their'}'s selects`;
   const exportCount = exportWho === 'all' ? anyCount : (selectedBy[exportWho]?.length ?? 0);
   const exportHref = (format: 'csv' | 'txt') =>
     `/api/admin/projects/${data.project.id}/export?format=${format}&reviewer=${exportWho}`;
@@ -255,18 +257,19 @@ export default function Gallery({
               <span className="meta">{f.n}</span>
             </button>
           ))}
-          {data.reviewers
-            .filter((r) => !r.isMe && r.count > 0)
-            .map((r) => (
-              <button
-                key={r.id}
-                className={`side-link${filter.kind === 'reviewer' && filter.id === r.id && mode !== 'stats' ? ' active' : ''}`}
-                onClick={() => { setFilter({ kind: 'reviewer', id: r.id }); setMode('browse'); }}
-              >
-                <span className="side-name">{r.name}</span>
-                <span className="meta">{r.count}</span>
-              </button>
-            ))}
+          {people.length > 0 && <div className="side-sub">People</div>}
+          {people.map((r) => (
+            <button
+              key={r.id}
+              className={`side-link${filter.kind === 'reviewer' && filter.id === r.id && mode !== 'stats' ? ' active' : ''}`}
+              onClick={() => { setFilter({ kind: 'reviewer', id: r.id }); setMode('browse'); }}
+            >
+              <span className="side-name">
+                {r.name}{r.isMe && <span className="you"> · you</span>}
+              </span>
+              <span className="meta">{r.count}</span>
+            </button>
+          ))}
           {admin && dupCount > 0 && (
             <button
               className={`side-link${filter.kind === 'dup' && mode !== 'stats' ? ' active' : ''}`}
@@ -378,7 +381,7 @@ export default function Gallery({
         )}
 
         {mode === 'stats' && (
-          <Stats albums={data.albums} images={images} reviewers={data.reviewers} selectedBy={selectedBy} />
+          <Stats albums={data.albums} images={images} reviewers={reviewers} selectedBy={selectedBy} />
         )}
 
         {mode === 'browse' && filter.kind !== 'all' && visible.length === 0 && (

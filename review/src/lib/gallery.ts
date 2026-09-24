@@ -99,7 +99,7 @@ export async function buildGallery(env: Env, o: Options) {
       ...(o.admin ? { hasPassword: project.has_password === 1 } : {}),
     },
     reviewerId: o.reviewerId,
-    me: { id: o.reviewerId, name: me?.display_name ?? 'Me' },
+    me: { id: o.reviewerId, name: me?.display_name ?? '' },
     albums: albums.map((a) => ({
       id: a.id,
       name: a.name,

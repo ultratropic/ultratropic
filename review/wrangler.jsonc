@@ -10,6 +10,9 @@
     "not_found_handling": "single-page-application"
   },
   "observability": { "enabled": true },
+  // How your own selects are labelled for reviewers and in exports. Rename per
+  // project from the sidebar; this is the default for new projects.
+  "vars": { "ADMIN_NAME": "Ultratropic" },
   "routes": [
     { "pattern": "review.ultra-tropic.com", "custom_domain": true }
   ],

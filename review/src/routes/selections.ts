@@ -47,7 +47,7 @@ async function adminReviewer(c: { env: Env }, projectId: string, name?: string):
     `INSERT INTO reviewers (id, project_id, email_norm, display_name, created_at, last_seen_at)
      VALUES (?, ?, ?, ?, ?, ?)`,
   )
-    .bind(id, projectId, ADMIN_EMAIL, name?.trim() || 'Me', now, now)
+    .bind(id, projectId, ADMIN_EMAIL, name?.trim() || c.env.ADMIN_NAME || 'Ultratropic', now, now)
     .run();
   return id;
 }
@@ -60,7 +60,7 @@ sel.post('/projects/:pid/me', async (c) => {
   const row = await c.env.DB.prepare(`SELECT display_name FROM reviewers WHERE id = ?`)
     .bind(reviewerId)
     .first<{ display_name: string }>();
-  return c.json({ reviewerId, name: row?.display_name ?? 'Me' });
+  return c.json({ reviewerId, name: row?.display_name ?? c.env.ADMIN_NAME });
 });
 
 /** The owner's gallery: every album, plus share settings and duplicate flags. */

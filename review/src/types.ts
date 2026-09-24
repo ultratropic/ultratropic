@@ -4,6 +4,8 @@ export interface Env {
   ASSETS: Fetcher;
   ADMIN_PASSWORD: string;
   COOKIE_SECRET: string;
+  /** Default display name for the owner's selects, e.g. the studio name. */
+  ADMIN_NAME: string;
 }
 
 export interface AdminSession {
