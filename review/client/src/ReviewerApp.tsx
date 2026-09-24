@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from './api';
 import Gallery from './Gallery';
+import Logo from './Logo';
 
 interface Info {
   name: string;
@@ -39,6 +40,7 @@ export default function ReviewerApp({ base }: { base: string }) {
   if (notFound) {
     return (
       <div className="wrap" style={{ maxWidth: 380 }}>
+      <Logo width={150} style={{ marginBottom: 44 }} />
         <h1>Not found</h1>
         <p className="sub">This link is no longer active.</p>
       </div>
@@ -85,6 +87,7 @@ function Unlock({ base, title, onDone }: { base: string; title: string; onDone: 
 
   return (
     <div className="wrap" style={{ maxWidth: 380 }}>
+      <Logo width={150} style={{ marginBottom: 44 }} />
       <h1>{title}</h1>
       <p className="sub">This gallery is password protected.</p>
       <form onSubmit={submit}>
@@ -126,6 +129,7 @@ function Join({ base, title, onDone }: { base: string; title: string; onDone: ()
 
   return (
     <div className="wrap" style={{ maxWidth: 380 }}>
+      <Logo width={150} style={{ marginBottom: 44 }} />
       <h1>{title}</h1>
       <p className="sub">Enter your name and email to start reviewing.</p>
       <form onSubmit={submit}>

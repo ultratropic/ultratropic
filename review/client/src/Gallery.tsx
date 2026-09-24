@@ -6,6 +6,7 @@ import Uploader from './Uploader';
 import SharePanel, { type ShareState } from './SharePanel';
 import Stats from './Stats';
 import CopyLink from './CopyLink';
+import Logo from './Logo';
 
 export interface GalleryImg extends Img {
   album: number;
@@ -318,6 +319,7 @@ export default function Gallery({
   return (
     <div className="gallery">
       <aside className="side">
+        <Logo width={116} style={{ margin: '4px 0 22px' }} />
         {onBack && <button className="ghost" onClick={onBack}>← Projects</button>}
         <h2 className="side-title">{data.project.name}</h2>
         {albumTitle && <p className="meta" style={{ margin: '0 0 4px' }}>{albumTitle}</p>}

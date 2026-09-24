@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, type Project } from './api';
 import Gallery from './Gallery';
+import Logo from './Logo';
 
 function Login({ onDone }: { onDone: () => void }) {
   const [password, setPassword] = useState('');
@@ -22,8 +23,8 @@ function Login({ onDone }: { onDone: () => void }) {
 
   return (
     <div className="wrap" style={{ maxWidth: 340 }}>
-      <h1>Review</h1>
-      <p className="sub">Admin</p>
+      <Logo width={150} style={{ marginBottom: 14 }} />
+      <p className="sub">Review · Admin</p>
       <form onSubmit={submit}>
         <div className="field">
           <label htmlFor="pw">Password</label>
@@ -118,8 +119,8 @@ export default function App() {
 
   return (
     <div className="wrap">
-      <h1>Review</h1>
-      <p className="sub">Projects</p>
+      <Logo width={150} style={{ marginBottom: 14 }} />
+      <p className="sub">Review · Projects</p>
       {projects.map((p) => (
         <div className="row" key={p.id}>
           <a href="#" onClick={(e) => { e.preventDefault(); setViewing(p.id); }}>{p.name}</a>

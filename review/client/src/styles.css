@@ -207,3 +207,11 @@ button.ghost.danger:hover { border-color: #c0392b; }
   content: ''; position: absolute; inset: 0; pointer-events: none;
   border: 3px solid var(--select);
 }
+
+/* ---- brand ---- */
+.logo {
+  display: block; flex-shrink: 0;
+  background-color: var(--fg);
+  -webkit-mask: url('/brand/ultratropic.png') no-repeat left center / contain;
+  mask: url('/brand/ultratropic.png') no-repeat left center / contain;
+}
