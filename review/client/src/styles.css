@@ -14,6 +14,8 @@
 }
 * { box-sizing: border-box; }
 html { scrollbar-gutter: stable; }
+/* While the gallery is open: scroll, but no pinch or double-tap zoom. */
+html.no-zoom { touch-action: pan-x pan-y; }
 body {
   margin: 0;
   background: var(--bg);
@@ -31,6 +33,8 @@ input[type='text'], input[type='password'] {
   border: 1px solid var(--line); border-radius: 3px;
 }
 input:focus { outline: none; border-color: var(--accent); }
+/* iOS zooms the whole page into any field under 16px when it's tapped. */
+@media (max-width: 760px) { input[type='text'], input[type='password'] { font-size: 16px; } }
 .field { margin-bottom: 20px; }
 button {
   padding: 11px 20px; font: inherit; font-size: 14px; cursor: pointer;

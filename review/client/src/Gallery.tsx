@@ -7,6 +7,7 @@ import SharePanel, { type ShareState } from './SharePanel';
 import Stats from './Stats';
 import CopyLink from './CopyLink';
 import Logo from './Logo';
+import { useNoZoom } from './useNoZoom';
 
 export interface GalleryImg extends Img {
   album: number;
@@ -78,6 +79,7 @@ export default function Gallery({
   const [images, setImages] = useState<GalleryImg[]>([]);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const [activeAlbum, setActiveAlbum] = useState(0);
+  useNoZoom();
   const [initialView] = useState(viewFromUrl);
   const [mode, setMode] = useState<'browse' | 'upload' | 'stats'>(initialView.stats ? 'stats' : 'browse');
   const [filter, setFilter] = useState<Filter>(initialView.filter);
