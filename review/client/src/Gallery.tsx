@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError } from './api';
 import Grid, { type Img } from './Grid';
 import Viewer from './Viewer';
@@ -84,7 +84,10 @@ export default function Gallery({
   const restored = useRef(false);
   const [selectedBy, setSelectedBy] = useState<Record<string, string[]>>({});
   const [sharing, setSharing] = useState<string | null>(null);
+  /** Phones: the sidebar lives behind this full-screen menu. */
+  const [menuOpen, setMenuOpen] = useState(false);
   const sectionRefs = useRef<Array<HTMLElement | null>>([]);
+  const sideRef = useRef<HTMLElement | null>(null);
   const imagesRef = useRef<GalleryImg[]>([]);
   useEffect(() => { imagesRef.current = images; }, [images]);
 
@@ -128,6 +131,29 @@ export default function Gallery({
   }, [base, onRemoved]);
 
   useEffect(() => { void loadGallery(); }, [loadGallery]);
+
+  // Always open the menu at the top, where the filters are. It has to happen once
+  // the menu is displayed: a hidden element ignores scrollTop, and the browser
+  // otherwise brings back wherever it was last scrolled to.
+  useLayoutEffect(() => {
+    if (menuOpen && sideRef.current) sideRef.current.scrollTop = 0;
+  }, [menuOpen]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const html = document.documentElement;
+    const prevBody = document.body.style.overflow;
+    const prevHtml = html.style.overflow;
+    document.body.style.overflow = 'hidden';
+    html.style.overflow = 'hidden';
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prevBody;
+      html.style.overflow = prevHtml;
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [menuOpen]);
 
   // A saved ?person= link for someone since removed or hidden: fall back to everything.
   useEffect(() => {
@@ -317,11 +343,44 @@ export default function Gallery({
   const exportHref = (format: 'csv' | 'txt') =>
     `/api/admin/projects/${data.project.id}/export?format=${format}&reviewer=${exportWho}`;
 
+  const viewLabel =
+    mode === 'stats' ? 'People & stats'
+      : mode === 'upload' ? 'Add photos'
+        : filter.kind === 'mine' ? 'My selects'
+          : filter.kind === 'any' ? 'All selects'
+            : filter.kind === 'dup' ? 'Possible duplicates'
+              : filter.kind === 'reviewer' ? (reviewers.find((r) => r.id === filter.id)?.name ?? 'Selects')
+                : 'All photos';
+  const viewCount = mode === 'browse' ? visible.length : null;
+
   const albumTitle = data.albums.length === 1 && !admin && !data.project.slug ? data.albums[0]!.name : null;
 
   return (
     <div className="gallery">
-      <aside className="side">
+      <div className="mobile-bar">
+        <Logo width={92} />
+        <button className="mobile-menu" aria-expanded={menuOpen} aria-label={`Menu: ${viewLabel}`}
+          onClick={() => setMenuOpen(true)}>
+          <span className="mobile-menu-label">{viewLabel}</span>
+          {viewCount !== null && <span className="meta">{viewCount}</span>}
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <rect x="2" y="3" width="12" height="2" rx="1" />
+            <rect x="2" y="7" width="12" height="2" rx="1" />
+            <rect x="2" y="11" width="12" height="2" rx="1" />
+          </svg>
+        </button>
+      </div>
+
+      <aside
+        ref={sideRef}
+        className={`side${menuOpen ? ' open' : ''}`}
+        // On a phone, choosing where to go closes the menu; utility buttons
+        // (rename, copy link, delete) leave it open.
+        onClick={(e) => {
+          if ((e.target as HTMLElement).closest('.side-link, .closes-menu')) setMenuOpen(false);
+        }}
+      >
+        <button className="side-close" aria-label="Close menu" onClick={() => setMenuOpen(false)}>×</button>
         <Logo width={116} style={{ margin: '4px 0 22px' }} />
         {onBack && <button className="ghost" onClick={onBack}>← Projects</button>}
         <h2 className="side-title">{data.project.name}</h2>
@@ -413,8 +472,10 @@ export default function Gallery({
                 className={`side-link${activeAlbum === i && mode === 'browse' ? ' active' : ''}`}
                 onClick={() => {
                   setMode('browse');
-                  requestAnimationFrame(() =>
-                    sectionRefs.current[i]?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+                  // After this render: the section exists again, and on a phone the
+                  // menu has closed and released its scroll lock.
+                  setTimeout(() =>
+                    sectionRefs.current[i]?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
                 }}
               >
                 <span className="side-name">
@@ -430,7 +491,7 @@ export default function Gallery({
         {admin ? (
           <div className="side-foot">
             {(images.length > 0 || mode !== 'upload') && (
-              <button className="ghost" style={{ width: '100%', marginBottom: 10 }}
+              <button className="ghost closes-menu" style={{ width: '100%', marginBottom: 10 }}
                 onClick={() => setMode(mode === 'upload' ? 'browse' : 'upload')}>
                 {mode === 'upload' ? 'Back to photos' : '+ Add photos'}
               </button>

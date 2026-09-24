@@ -105,10 +105,40 @@ section { margin-bottom: 40px; }
 }
 .heart.big.on { background: var(--select); border-color: var(--select); color: #fff; }
 
+/* ---- phones: the sidebar becomes a slim bar + full-screen menu ---- */
+.mobile-bar, .side-close { display: none; }
 @media (max-width: 760px) {
-  .gallery { flex-direction: column; }
-  .side { position: static; width: 100%; height: auto; border-right: none;
-    border-bottom: 1px solid var(--line); }
+  :root { --bar-h: 52px; }
+  .gallery { display: block; }
+  .mobile-bar {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    position: sticky; top: 0; z-index: 30; height: var(--bar-h); padding: 0 12px;
+    background: var(--bg); border-bottom: 1px solid var(--line);
+  }
+  .mobile-menu {
+    display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 10px; margin-right: -6px;
+    background: transparent; color: var(--fg); border: none; font-size: 14px;
+  }
+  .mobile-menu-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mobile-menu svg { flex-shrink: 0; fill: currentColor; }
+  .side { display: none; }
+  .side.open {
+    /* align-self must be reset: the desktop sidebar's flex-start also applies to a
+       fixed box, which would shrink the menu to its content — taller than the
+       screen, and with the page locked behind it, impossible to scroll. */
+    display: block; position: fixed; inset: 0; z-index: 40; width: auto; height: auto; align-self: stretch;
+    overflow-y: auto; overscroll-behavior: contain; border: none; background: var(--bg);
+    padding: max(14px, env(safe-area-inset-top)) 16px max(28px, env(safe-area-inset-bottom));
+  }
+  .side-close {
+    /* Pinned to the screen, not the menu, so it's there however far you've scrolled. */
+    display: block; position: fixed; z-index: 41; right: 8px; top: max(8px, env(safe-area-inset-top));
+    width: 40px; height: 40px; padding: 0; font-size: 26px; line-height: 1;
+    background: var(--bg); color: var(--muted); border: none; border-radius: 20px;
+  }
+  .side-link { padding: 10px 8px; font-size: 15px; }
+  .section-head { top: var(--bar-h); }
+  section { scroll-margin-top: var(--bar-h); }
   .main { padding: 12px 12px 64px; width: 100%; }
 }
 
