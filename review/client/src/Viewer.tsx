@@ -5,7 +5,9 @@ const SWIPE_DISTANCE = 60;   // px: a deliberate horizontal drag
 const SWIPE_VELOCITY = 0.45; // px/ms: or a quick flick
 const TAP_SLOP = 10;         // px of movement still counted as a tap
 const DOUBLE_TAP_MS = 300;
-const SHOWN_PICKERS = 6;       // past this, "+ N more" keeps the caption to a line or two
+// The names line never wraps (a second line would shift the photo), so it shows
+// as many names as fit a line: six on a desktop, three on a phone.
+const shownPickers = () => (window.matchMedia('(max-width: 760px)').matches ? 3 : 6);
 
 /**
  * Full-screen review. Keyboard on desktop (arrows, F/Space, Esc); swipe and
@@ -217,14 +219,14 @@ export default function Viewer({
 
       {/* Who picked it, like a caption: a heart and a name per person. */}
       <div className="viewer-pickers" aria-live="polite">
-        {pickers.slice(0, SHOWN_PICKERS).map((name, i) => (
+        {pickers.slice(0, shownPickers()).map((name, i) => (
           // Two reviewers can share a name, so the position is part of the key.
           <span key={`${i}-${name}`} className="picker">
             <span className="picker-heart" aria-hidden="true">♥</span>{name}
           </span>
         ))}
-        {pickers.length > SHOWN_PICKERS && (
-          <span className="picker more">+ {pickers.length - SHOWN_PICKERS} more</span>
+        {pickers.length > shownPickers() && (
+          <span className="picker more">+ {pickers.length - shownPickers()} more</span>
         )}
       </div>
 
