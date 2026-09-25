@@ -617,6 +617,32 @@ export default function Gallery({
 
             <button
               className="ghost danger"
+              style={{ marginBottom: 10 }}
+              onClick={async () => {
+                const others = reviewers.filter((r) => !r.isMe).length;
+                const picks = Object.values(selectedBy).reduce((n, ids) => n + ids.length, 0);
+                // Two steps: say exactly what goes, then make them type it.
+                const first = window.confirm(
+                  `Reset "${data.project.name}"?\n\n` +
+                  `• ${picks} ${picks === 1 ? 'select' : 'selects'} will be cleared, including yours\n` +
+                  `• ${others} ${others === 1 ? 'reviewer' : 'reviewers'} will be removed (you stay)\n\n` +
+                  `Photos, albums, client links and settings are kept. This cannot be undone.`,
+                );
+                if (!first) return;
+                const typed = window.prompt('To confirm, type RESET');
+                if (typed?.trim().toUpperCase() !== 'RESET') return;
+                await api(`/api/admin/projects/${data.project.id}/reset`, {
+                  method: 'POST', body: JSON.stringify({ confirm: 'RESET' }),
+                });
+                setFilter({ kind: 'all' });
+                void loadGallery();
+              }}
+            >
+              Reset selects &amp; reviewers
+            </button>
+
+            <button
+              className="ghost danger"
               onClick={async () => {
                 const ok = window.confirm(
                   `Delete "${data.project.name}"?\n\n${data.albums.length} albums and ${images.length} images will be permanently removed, along with every selection. This cannot be undone.`,

@@ -194,6 +194,35 @@ admin.delete('/reviewers/:id', async (c) => {
   return c.json({ removed: r.display_name, selections: removed?.n ?? 0 });
 });
 
+/**
+ * Start a project's review over: every selection is cleared (the owner's too)
+ * and every reviewer except the owner is removed. Photos, albums, client links,
+ * passwords, cover and settings are untouched. Removed reviewers' sessions stop
+ * working at once (reviewer routes re-check that the person exists).
+ *
+ * Irreversible, so the request must spell it out: { confirm: "RESET" }.
+ */
+admin.post('/projects/:pid/reset', async (c) => {
+  const projectId = c.req.param('pid');
+  const { confirm } = await c.req.json<{ confirm?: string }>().catch(() => ({ confirm: undefined }));
+  if (confirm !== 'RESET') return c.json({ error: 'confirmation required' }, 400);
+
+  const project = await c.env.DB.prepare(`SELECT id FROM projects WHERE id = ?`).bind(projectId).first();
+  if (!project) return c.json({ error: 'project not found' }, 404);
+
+  const [sel, rev] = await Promise.all([
+    c.env.DB.prepare(`SELECT COUNT(*) n FROM selections WHERE project_id = ?`).bind(projectId).first<{ n: number }>(),
+    c.env.DB.prepare(`SELECT COUNT(*) n FROM reviewers WHERE project_id = ? AND email_norm != '__admin__'`)
+      .bind(projectId)
+      .first<{ n: number }>(),
+  ]);
+  await c.env.DB.batch([
+    c.env.DB.prepare(`DELETE FROM selections WHERE project_id = ?`).bind(projectId),
+    c.env.DB.prepare(`DELETE FROM reviewers WHERE project_id = ? AND email_norm != '__admin__'`).bind(projectId),
+  ]);
+  return c.json({ selectionsCleared: sel?.n ?? 0, reviewersRemoved: rev?.n ?? 0 });
+});
+
 /** Per-project settings the owner can change after creating it. */
 admin.post('/projects/:pid/settings', async (c) => {
   const body = await c.req
