@@ -64,7 +64,7 @@ function NewProject({ onCreated }: { onCreated: (p: { id: string }) => void }) {
     <form onSubmit={create} style={{ marginTop: 32, paddingTop: 24, borderTop: '1px solid var(--line)' }}>
       <div className="field">
         <label htmlFor="n">Project name</label>
-        <input id="n" type="text" value={name} autoFocus onChange={(e) => setName(e.target.value)} />
+        <input id="n" type="text" value={name} autoFocus maxLength={120} onChange={(e) => setName(e.target.value)} />
       </div>
       <div className="field">
         <label htmlFor="p">Password (optional)</label>

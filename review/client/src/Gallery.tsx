@@ -137,8 +137,9 @@ export default function Gallery({
     );
     setSelectedBy(d.selectionsByReviewer ?? {});
     // An empty project has nothing to browse — go straight to adding photos.
-    setMode((m) => (d.rows.length === 0 ? 'upload' : m === 'upload' ? 'browse' : m));
-  }, [base, onRemoved]);
+    // Only the owner is sent to the uploader when there's nothing to show.
+    setMode((m) => (d.rows.length === 0 && admin ? 'upload' : m === 'upload' ? 'browse' : m));
+  }, [base, onRemoved, admin]);
 
   useEffect(() => { void loadGallery(); }, [loadGallery]);
 
@@ -705,6 +706,9 @@ export default function Gallery({
           />
         )}
 
+        {mode === 'browse' && images.length === 0 && !admin && (
+          <p className="sub" style={{ padding: '24px 0' }}>No photos here yet. Check back soon.</p>
+        )}
         {mode === 'browse' && filter.kind === 'dup' && visible.length > 0 && (
           <p className="meta" style={{ margin: '4px 0 16px', maxWidth: 640 }}>
             Frames that would match the same RAW in Capture One (e.g. <span className="mono">X.jpg</span> and{' '}

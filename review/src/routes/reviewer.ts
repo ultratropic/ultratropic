@@ -214,6 +214,8 @@ export function reviewerRoutes(resolve: Resolve) {
     const name = body.name?.trim();
     const email = normalizeEmail(body.email ?? '');
     if (!name) return c.json({ error: 'name required' }, 400);
+    if (name.length > 80) return c.json({ error: 'name too long' }, 400);
+    if (email.length > 254) return c.json({ error: 'valid email required' }, 400);
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return c.json({ error: 'valid email required' }, 400);
 
     const now = Date.now();

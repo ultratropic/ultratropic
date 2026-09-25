@@ -124,7 +124,9 @@ function Join({ base, title, onDone }: { base: string; title: string; onDone: ()
       onDone();
     } catch (error) {
       const text = (error as Error).message;
-      setErr(text.includes('email') ? 'Please enter a valid email address.' : 'Could not start. Try again.');
+      setErr(text.includes('email') ? 'Please enter a valid email address.'
+        : text.includes('too long') ? 'That name is too long.'
+          : 'Could not start. Try again.');
       setBusy(false);
     }
   }
@@ -137,12 +139,12 @@ function Join({ base, title, onDone }: { base: string; title: string; onDone: ()
       <form onSubmit={submit}>
         <div className="field">
           <label htmlFor="nm">Name</label>
-          <input id="nm" type="text" value={name} autoFocus autoComplete="name"
+          <input id="nm" type="text" value={name} autoFocus autoComplete="name" maxLength={80}
             onChange={(e) => setName(e.target.value)} />
         </div>
         <div className="field">
           <label htmlFor="em">Email</label>
-          <input id="em" type="text" inputMode="email" value={email} autoComplete="email"
+          <input id="em" type="text" inputMode="email" value={email} autoComplete="email" maxLength={254}
             onChange={(e) => setEmail(e.target.value)} />
         </div>
         <button disabled={busy || !name.trim() || !email.trim()}>

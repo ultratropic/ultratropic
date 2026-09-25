@@ -34,7 +34,7 @@ async function adminReviewer(c: { env: Env }, projectId: string, name?: string):
     .first<{ id: string }>();
 
   if (existing) {
-    if (name?.trim()) {
+    if (name?.trim() && name.trim().length <= 80) {
       await c.env.DB.prepare(`UPDATE reviewers SET display_name = ?, last_seen_at = ? WHERE id = ?`)
         .bind(name.trim(), now, existing.id)
         .run();

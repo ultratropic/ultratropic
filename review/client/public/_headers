@@ -1,0 +1,8 @@
+# Static files are served straight from the asset store, never reaching the
+# Worker's header middleware, so the same security headers are declared here.
+/*
+  X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'
+  Referrer-Policy: same-origin
+  X-Content-Type-Options: nosniff
+  Strict-Transport-Security: max-age=31536000

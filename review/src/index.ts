@@ -9,6 +9,23 @@ import type { Env, Vars } from './types';
 
 const app = new Hono<{ Bindings: Env; Variables: Vars }>();
 
+/**
+ * On every response: nobody may frame the app (a click-hijacking defence for
+ * the owner's delete/reset buttons); the secret-bearing /p/ and /a/ URLs are
+ * never sent as a referrer to another site; browsers must not guess content
+ * types; and this host is HTTPS-only.
+ */
+app.use('*', async (c, next) => {
+  await next();
+  // Responses from the asset store or cache can have immutable headers.
+  c.res = new Response(c.res.body, c.res);
+  c.res.headers.set('X-Frame-Options', 'DENY');
+  c.res.headers.set('Content-Security-Policy', "frame-ancestors 'none'");
+  c.res.headers.set('Referrer-Policy', 'same-origin');
+  c.res.headers.set('X-Content-Type-Options', 'nosniff');
+  c.res.headers.set('Strict-Transport-Security', 'max-age=31536000');
+});
+
 app.get('/api/health', async (c) => {
   // Touch both bindings so a misconfigured deploy fails loudly here, not mid-upload.
   const db = await c.env.DB.prepare('SELECT COUNT(*) AS n FROM projects').first<{ n: number }>();

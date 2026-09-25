@@ -62,6 +62,7 @@ admin.post('/projects', async (c) => {
 
   const name = body.name?.trim();
   if (!name) return c.json({ error: 'name is required' }, 400);
+  if (name.length > 120) return c.json({ error: 'name too long' }, 400);
 
   const id = ulid();
   const slug = token(10);
@@ -105,7 +106,7 @@ admin.get('/projects/:id/albums', async (c) => {
 admin.post('/projects/:id/albums', async (c) => {
   const projectId = c.req.param('id');
   const { name } = await c.req.json<{ name?: string }>().catch(() => ({ name: undefined }));
-  const albumName = name?.trim() || 'Untitled';
+  const albumName = (name?.trim() || 'Untitled').slice(0, 120);
   const slug = slugify(albumName);
 
   const existing = await c.env.DB.prepare(
