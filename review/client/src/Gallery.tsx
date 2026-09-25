@@ -24,6 +24,8 @@ interface GalleryData {
   project: {
     id: string; name: string; slug: string | null; previewEdge: number;
     hasPassword?: boolean; coverImageId?: string | null;
+    /** Whether reviewers get download buttons. The owner always does. */
+    allowDownloads: boolean;
   };
   me: { id: string; name: string };
   albums: Album[];
@@ -393,6 +395,7 @@ export default function Gallery({
           : filter.kind === 'reviewer' ? `${reviewers.find((r) => r.id === filter.id)?.name ?? 'their'}'s selects`
             : 'all photos';
   const capitalised = downloadPhrase.charAt(0).toUpperCase() + downloadPhrase.slice(1);
+  const canDownload = admin || data.project.allowDownloads;
 
   const startZip = async () => {
     if (dl && !dl.error && dl.done < dl.total) return;
@@ -431,7 +434,12 @@ export default function Gallery({
   const albumTitle = data.albums.length === 1 && !admin && !data.project.slug ? data.albums[0]!.name : null;
 
   return (
-    <div className="gallery">
+    <div
+      className={`gallery${canDownload ? '' : ' no-save'}`}
+      onContextMenu={canDownload ? undefined : (e) => {
+        if ((e.target as HTMLElement).tagName === 'IMG') e.preventDefault();
+      }}
+    >
       <div className="mobile-bar">
         <Logo width={112} />
         <button className="mobile-menu" aria-expanded={menuOpen} aria-label={`Menu: ${viewLabel}`}
@@ -461,7 +469,7 @@ export default function Gallery({
         <h2 className="side-title">{data.project.name}</h2>
         {albumTitle && <p className="meta" style={{ margin: '0 0 4px' }}>{albumTitle}</p>}
         {!admin && <div style={{ height: 16 }} />}
-        {mode === 'browse' && visible.length > 0 && (
+        {canDownload && mode === 'browse' && visible.length > 0 && (
           <button className="ghost download-btn closes-menu" onClick={() => void startZip()}
             disabled={!!dl && !dl.error && dl.done < dl.total}>
             <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
@@ -586,6 +594,25 @@ export default function Gallery({
                 <CopyLink url={`${location.origin}/p/${data.project.slug}`} />
               </>
             )}
+            <label className="radio setting">
+              <input
+                type="checkbox"
+                checked={data.project.allowDownloads}
+                onChange={async (e) => {
+                  const allowDownloads = e.target.checked;
+                  setData((d) => d && { ...d, project: { ...d.project, allowDownloads } });
+                  try {
+                    await api(`/api/admin/projects/${data.project.id}/settings`, {
+                      method: 'POST', body: JSON.stringify({ allowDownloads }),
+                    });
+                  } catch {
+                    setData((d) => d && { ...d, project: { ...d.project, allowDownloads: !allowDownloads } });
+                  }
+                }}
+              />
+              <span>Reviewers can download</span>
+            </label>
+
             <button
               className="ghost danger"
               onClick={async () => {
@@ -704,7 +731,7 @@ export default function Gallery({
                   if (img) setOpenIndex(indexOf.get(img.id) ?? null);
                 }}
                 onToggle={toggle}
-                onDownload={downloadFrame}
+                onDownload={canDownload ? downloadFrame : undefined}
                 showNames={admin && filter.kind === 'dup'}
                 onDelete={admin && filter.kind === 'dup' ? (img) => {
                   if (window.confirm(`Delete ${img.filename}? This cannot be undone.`)) void deleteImage(img.id);
@@ -752,7 +779,7 @@ export default function Gallery({
             setData((d) => d && { ...d, project: { ...d.project, coverImageId: id } });
           } : undefined}
           albumName={data.albums[visible[openIndex]!.album]?.name}
-          onDownload={downloadFrame}
+          onDownload={canDownload ? downloadFrame : undefined}
           pickers={(() => {
             // You first, then everyone else in the order they joined.
             const ids = new Set(pickersByImage.get(visible[openIndex]!.id) ?? []);

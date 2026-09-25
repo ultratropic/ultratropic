@@ -194,6 +194,19 @@ admin.delete('/reviewers/:id', async (c) => {
   return c.json({ removed: r.display_name, selections: removed?.n ?? 0 });
 });
 
+/** Per-project settings the owner can change after creating it. */
+admin.post('/projects/:pid/settings', async (c) => {
+  const body = await c.req
+    .json<{ allowDownloads?: boolean }>()
+    .catch(() => ({}) as { allowDownloads?: boolean });
+  if (typeof body.allowDownloads !== 'boolean') return c.json({ error: 'allowDownloads: boolean required' }, 400);
+  const res = await c.env.DB.prepare(`UPDATE projects SET allow_downloads = ? WHERE id = ?`)
+    .bind(body.allowDownloads ? 1 : 0, c.req.param('pid'))
+    .run();
+  if (!res.meta.changes) return c.json({ error: 'project not found' }, 404);
+  return c.json({ allowDownloads: body.allowDownloads });
+});
+
 /** Choose the project's cover image, or pass null to go back to the first frame. */
 admin.post('/projects/:pid/cover', async (c) => {
   const projectId = c.req.param('pid');

@@ -393,3 +393,7 @@ button.ghost.danger:hover { border-color: #c0392b; }
 }
 .dl-bar { width: 140px; height: 2px; background: var(--line); overflow: hidden; }
 .dl-bar > div { height: 100%; background: var(--fg); transition: width 0.2s; }
+
+/* Downloads off: no easy save — no long-press "Save to Photos", no drag to desktop. */
+.gallery.no-save img { -webkit-touch-callout: none; -webkit-user-drag: none; user-select: none; }
+.radio.setting { font-size: 13px; margin: 0 0 18px; }
