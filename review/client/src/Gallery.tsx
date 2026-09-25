@@ -8,6 +8,7 @@ import Stats from './Stats';
 import CopyLink from './CopyLink';
 import Logo from './Logo';
 import { useNoZoom } from './useNoZoom';
+import { downloadOne, downloadZip } from './download';
 
 export interface GalleryImg extends Img {
   album: number;
@@ -86,6 +87,8 @@ export default function Gallery({
   const restored = useRef(false);
   const [selectedBy, setSelectedBy] = useState<Record<string, string[]>>({});
   const [sharing, setSharing] = useState<string | null>(null);
+  const [dl, setDl] = useState<{ done: number; total: number; label: string; error?: string } | null>(null);
+  const dlAbort = useRef<AbortController | null>(null);
   /** Phones: the sidebar lives behind this full-screen menu. */
   const [menuOpen, setMenuOpen] = useState(false);
   const sectionRefs = useRef<Array<HTMLElement | null>>([]);
@@ -382,6 +385,39 @@ export default function Gallery({
   const exportHref = (format: 'csv' | 'txt') =>
     `/api/admin/projects/${data.project.id}/export?format=${format}&reviewer=${exportWho}`;
 
+  /** What the download control acts on, as a phrase: "all photos", "Alice's selects". */
+  const downloadPhrase =
+    filter.kind === 'mine' ? 'my selects'
+      : filter.kind === 'any' ? 'all selects'
+        : filter.kind === 'dup' ? 'possible duplicates'
+          : filter.kind === 'reviewer' ? `${reviewers.find((r) => r.id === filter.id)?.name ?? 'their'}'s selects`
+            : 'all photos';
+  const capitalised = downloadPhrase.charAt(0).toUpperCase() + downloadPhrase.slice(1);
+
+  const startZip = async () => {
+    if (dl && !dl.error && dl.done < dl.total) return;
+    const items = visible.map((img) => ({
+      filename: img.filename, preview: img.preview, album: data.albums[img.album]?.name ?? 'Photos',
+    }));
+    const controller = new AbortController();
+    dlAbort.current = controller;
+    setDl({ done: 0, total: items.length, label: downloadPhrase });
+    try {
+      await downloadZip(items, `${data.project.name} - ${capitalised}`,
+        (done, total) => setDl((d) => d && { ...d, done, total }), controller.signal);
+      setDl((d) => d && { ...d, done: d.total });
+      setTimeout(() => setDl((d) => (d && d.done >= d.total && !d.error ? null : d)), 2500);
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') setDl(null);
+      else setDl((d) => d && { ...d, error: (err as Error).message });
+    }
+  };
+
+  const downloadFrame = (img: { filename: string; preview: string }) => {
+    downloadOne(img).catch((err) =>
+      setDl({ done: 0, total: 1, label: img.filename, error: (err as Error).message }));
+  };
+
   const viewLabel =
     mode === 'stats' ? 'People & stats'
       : mode === 'upload' ? 'Add photos'
@@ -425,6 +461,17 @@ export default function Gallery({
         <h2 className="side-title">{data.project.name}</h2>
         {albumTitle && <p className="meta" style={{ margin: '0 0 4px' }}>{albumTitle}</p>}
         {!admin && <div style={{ height: 16 }} />}
+        {mode === 'browse' && visible.length > 0 && (
+          <button className="ghost download-btn closes-menu" onClick={() => void startZip()}
+            disabled={!!dl && !dl.error && dl.done < dl.total}>
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+              <path d="M8 2v8M4.5 6.5 8 10l3.5-3.5M3 13.5h10" fill="none" stroke="currentColor"
+                strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <span className="side-name">Download {downloadPhrase}</span>
+            <span className="meta">{visible.length}</span>
+          </button>
+        )}
         {admin ? (
           <p className="meta" style={{ marginBottom: 20 }}>
             Reviewing as {data.me.name} ·{' '}
@@ -657,6 +704,7 @@ export default function Gallery({
                   if (img) setOpenIndex(indexOf.get(img.id) ?? null);
                 }}
                 onToggle={toggle}
+                onDownload={downloadFrame}
                 showNames={admin && filter.kind === 'dup'}
                 onDelete={admin && filter.kind === 'dup' ? (img) => {
                   if (window.confirm(`Delete ${img.filename}? This cannot be undone.`)) void deleteImage(img.id);
@@ -666,6 +714,26 @@ export default function Gallery({
           );
         })}
       </main>
+
+      {dl && (
+        <div className="dl-toast" role="status">
+          {dl.error ? (
+            <span>Download failed: {dl.error}</span>
+          ) : dl.done < dl.total ? (
+            <>
+              <span>Preparing {dl.label} · {dl.done} / {dl.total}</span>
+              <div className="dl-bar"><div style={{ width: `${Math.round((dl.done / Math.max(dl.total, 1)) * 100)}%` }} /></div>
+            </>
+          ) : (
+            <span>Downloaded {dl.total} {dl.total === 1 ? 'photo' : 'photos'}</span>
+          )}
+          {dl.error || dl.done >= dl.total ? (
+            <button className="text-btn" onClick={() => setDl(null)}>Dismiss</button>
+          ) : (
+            <button className="text-btn" onClick={() => dlAbort.current?.abort()}>Cancel</button>
+          )}
+        </div>
+      )}
 
       {openIndex !== null && visible[openIndex] && (
         <Viewer
@@ -684,6 +752,7 @@ export default function Gallery({
             setData((d) => d && { ...d, project: { ...d.project, coverImageId: id } });
           } : undefined}
           albumName={data.albums[visible[openIndex]!.album]?.name}
+          onDownload={downloadFrame}
           pickers={(() => {
             // You first, then everyone else in the order they joined.
             const ids = new Set(pickersByImage.get(visible[openIndex]!.id) ?? []);

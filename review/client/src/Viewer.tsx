@@ -29,6 +29,7 @@ export default function Viewer({
   coverId,
   albumName,
   pickers = [],
+  onDownload,
 }: {
   images: Img[];
   index: number;
@@ -43,6 +44,7 @@ export default function Viewer({
   albumName?: string;
   /** Names of everyone who picked this frame, "You" first. */
   pickers?: string[];
+  onDownload?: (img: Img) => void;
 }) {
   const img = images[index];
   const [dragX, setDragX] = useState(0);
@@ -242,6 +244,11 @@ export default function Viewer({
           </button>
         ) : <span />}
         <span className="viewer-actions">
+          {onDownload && (
+            <button className="text-btn" onClick={(e) => { e.stopPropagation(); onDownload(img); }}>
+              Download
+            </button>
+          )}
           {onSetCover && (
             img.id === coverId ? (
               <span className="meta">Project cover</span>

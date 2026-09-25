@@ -101,6 +101,7 @@ export default function Grid({
   onOpen,
   onToggle,
   onDelete,
+  onDownload,
   showNames = false,
 }: {
   images: Img[];
@@ -108,6 +109,8 @@ export default function Grid({
   onToggle?: (id: string) => void;
   /** Owner only; shown where deleting is the point, e.g. reviewing duplicates. */
   onDelete?: (img: Img) => void;
+  /** Download this one frame; bottom-right on hover, where Delete isn't. */
+  onDownload?: (img: Img) => void;
   /** Filenames on the tiles — what tells two near-identical frames apart. */
   showNames?: boolean;
 }) {
@@ -183,7 +186,7 @@ export default function Grid({
                 title={img.filename}
                 style={{
                   width: '100%', height: '100%', padding: 0, border: 'none', borderRadius: 0,
-                  background: 'var(--line)', cursor: 'zoom-in', overflow: 'hidden', display: 'block',
+                  background: 'var(--line)', cursor: 'pointer', overflow: 'hidden', display: 'block',
                 }}
               >
                 <img
@@ -197,6 +200,19 @@ export default function Grid({
                 />
               </button>
               {showNames && <span className="tile-name mono">{img.filename}</span>}
+              {onDownload && !onDelete && (
+                <button
+                  className="tile-download"
+                  aria-label={`Download ${img.filename}`}
+                  title="Download"
+                  onClick={(e) => { e.stopPropagation(); onDownload(img); }}
+                >
+                  <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                    <path d="M8 2v8M4.5 6.5 8 10l3.5-3.5M3 13.5h10" fill="none" stroke="currentColor"
+                      strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              )}
               {onDelete && (
                 <button
                   className="tile-delete"
