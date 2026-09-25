@@ -109,7 +109,7 @@ export default function Grid({
   onToggle?: (id: string) => void;
   /** Owner only; shown where deleting is the point, e.g. reviewing duplicates. */
   onDelete?: (img: Img) => void;
-  /** Download this one frame; bottom-right on hover, where Delete isn't. */
+  /** Download this one frame; bottom-left on hover, where Delete isn't. */
   onDownload?: (img: Img) => void;
   /** Filenames on the tiles — what tells two near-identical frames apart. */
   showNames?: boolean;

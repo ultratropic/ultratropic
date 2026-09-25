@@ -421,6 +421,18 @@ export default function Gallery({
       setDl({ done: 0, total: 1, label: img.filename, error: (err as Error).message }));
   };
 
+  const downloadButton = canDownload && mode === 'browse' && visible.length > 0 ? (
+          <button className="ghost download-btn closes-menu" onClick={() => void startZip()}
+            disabled={!!dl && !dl.error && dl.done < dl.total}>
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+              <path d="M8 2v8M4.5 6.5 8 10l3.5-3.5M3 13.5h10" fill="none" stroke="currentColor"
+                strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <span className="side-name">Download {downloadPhrase}</span>
+            <span className="meta">{visible.length}</span>
+          </button>
+  ) : null;
+
   const viewLabel =
     mode === 'stats' ? 'People & stats'
       : mode === 'upload' ? 'Add photos'
@@ -469,17 +481,6 @@ export default function Gallery({
         <h2 className="side-title">{data.project.name}</h2>
         {albumTitle && <p className="meta" style={{ margin: '0 0 4px' }}>{albumTitle}</p>}
         {!admin && <div style={{ height: 16 }} />}
-        {canDownload && mode === 'browse' && visible.length > 0 && (
-          <button className="ghost download-btn closes-menu" onClick={() => void startZip()}
-            disabled={!!dl && !dl.error && dl.done < dl.total}>
-            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-              <path d="M8 2v8M4.5 6.5 8 10l3.5-3.5M3 13.5h10" fill="none" stroke="currentColor"
-                strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            <span className="side-name">Download {downloadPhrase}</span>
-            <span className="meta">{visible.length}</span>
-          </button>
-        )}
         {admin ? (
           <p className="meta" style={{ marginBottom: 20 }}>
             Reviewing as {data.me.name} ·{' '}
@@ -582,6 +583,7 @@ export default function Gallery({
 
         {admin ? (
           <div className="side-foot">
+            {downloadButton}
             {(images.length > 0 || mode !== 'upload') && (
               <button className="ghost closes-menu" style={{ width: '100%', marginBottom: 10 }}
                 onClick={() => setMode(mode === 'upload' ? 'browse' : 'upload')}>
@@ -629,6 +631,7 @@ export default function Gallery({
           </div>
         ) : (
           <div className="side-foot">
+            {downloadButton}
             <p className="meta" style={{ margin: 0 }}>
               Reviewing as {data.me.name} ·{' '}
               <button className="text-btn" onClick={async () => {

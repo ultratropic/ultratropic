@@ -233,16 +233,6 @@ export default function Viewer({
       </div>
 
       <div className="viewer-foot">
-        {onToggle ? (
-          <button
-            className={`heart big${img.mine ? ' on' : ''}`}
-            aria-pressed={!!img.mine}
-            onClick={(e) => { e.stopPropagation(); onToggle(img.id); }}
-          >
-            {/* The red fill says it's selected; the word stays put. */}
-            {img.mine ? '♥' : '♡'} Select
-          </button>
-        ) : <span />}
         <span className="viewer-actions">
           {onDownload && (
             <button className="text-btn" onClick={(e) => { e.stopPropagation(); onDownload(img); }}>
@@ -273,6 +263,16 @@ export default function Viewer({
           <span className="meta hint-keys">← → to move · F or Space to select · Esc to close</span>
           <span className="meta hint-touch">Swipe · double-tap to select</span>
         </span>
+        {onToggle ? (
+          <button
+            className={`heart big${img.mine ? ' on' : ''}`}
+            aria-pressed={!!img.mine}
+            onClick={(e) => { e.stopPropagation(); onToggle(img.id); }}
+          >
+            {/* The red fill says it's selected; the word stays put. */}
+            {img.mine ? '♥' : '♡'} Select
+          </button>
+        ) : null}
       </div>
     </div>
   );
