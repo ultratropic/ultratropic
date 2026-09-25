@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, type Project } from './api';
+import { api, ApiError, type Project } from './api';
 import Gallery from './Gallery';
 import Logo from './Logo';
 
@@ -15,8 +15,10 @@ function Login({ onDone }: { onDone: () => void }) {
     try {
       await api('/api/admin/login', { method: 'POST', body: JSON.stringify({ password }) });
       onDone();
-    } catch {
-      setErr('Incorrect password.');
+    } catch (error) {
+      setErr(error instanceof ApiError && error.status === 429
+        ? 'Too many attempts. Wait a minute and try again.'
+        : 'Incorrect password.');
       setBusy(false);
     }
   }

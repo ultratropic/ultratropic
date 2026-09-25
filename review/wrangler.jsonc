@@ -24,6 +24,11 @@
       "migrations_dir": "migrations"
     }
   ],
+  // Brute-force brakes: per visitor IP, per minute.
+  "ratelimits": [
+    { "name": "LOGIN_LIMIT", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } },
+    { "name": "UNLOCK_LIMIT", "namespace_id": "1002", "simple": { "limit": 20, "period": 60 } }
+  ],
   "r2_buckets": [
     { "binding": "BUCKET", "bucket_name": "review-images" }
   ]

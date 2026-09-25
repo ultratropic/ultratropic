@@ -6,6 +6,8 @@ export interface Env {
   COOKIE_SECRET: string;
   /** Default display name for the owner's selects, e.g. the studio name. */
   ADMIN_NAME: string;
+  LOGIN_LIMIT: RateLimit;
+  UNLOCK_LIMIT: RateLimit;
 }
 
 export interface AdminSession {

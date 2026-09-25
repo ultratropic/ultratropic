@@ -109,7 +109,10 @@ export default function Gallery({
     try {
       d = await api<GalleryData>(`${base}/gallery`);
     } catch (err) {
-      if (!onRemoved(err)) setLoadError('Could not load the gallery. Check your connection and reload.');
+      if (onRemoved(err)) return;
+      setLoadError(err instanceof ApiError && err.status === 404
+        ? 'This project no longer exists.'
+        : 'Could not load the gallery. Check your connection and reload.');
       return;
     }
     setData(d);
@@ -207,17 +210,27 @@ export default function Gallery({
    * A failure rolls the image back to exactly what it was rather than leaving a
    * selection that looks saved but isn't.
    */
+  /**
+   * Heart toggles, per frame, are optimistic and strictly ordered.
+   *
+   * The heart flips on click; the request follows. Requests for the same frame
+   * are chained, so a quick on-off (a double-click, fast taps) reaches the server
+   * in the order it happened, and only the latest request's answer is applied —
+   * an earlier one arriving late can't flip the heart back to a stale state.
+   * State is read from a ref updated in the same tick, never from inside a
+   * setState updater, which runs later and would see yesterday's value.
+   */
+  const inflight = useRef(new Map<string, { chain: Promise<unknown>; seq: number }>());
   const toggle = useCallback(
-    async (id: string) => {
-      // Read current state from a ref, never from inside the setState updater:
-      // the updater runs during render, not at call time, so anything it assigns
-      // is still undefined on the next line.
-      const previous = imagesRef.current.find((img) => img.id === id);
-      if (!previous || !data) return;
-      const wasSelected = previous.mine;
+    (id: string) => {
+      const current = imagesRef.current.find((img) => img.id === id);
+      if (!current || !data) return;
+      const want = !current.mine;
       const meId = data.me.id;
 
       const apply = (selected: boolean, count: number) => {
+        imagesRef.current = imagesRef.current.map((img) =>
+          img.id === id ? { ...img, mine: selected, selects: count } : img);
         setImages((list) => list.map((img) => (img.id === id ? { ...img, mine: selected, selects: count } : img)));
         setSelectedBy((m) => {
           const mine = new Set(m[meId] ?? []);
@@ -226,17 +239,25 @@ export default function Gallery({
         });
       };
 
-      apply(!wasSelected, previous.selects + (wasSelected ? -1 : 1));
-      try {
-        const res = await api<{ selected: boolean; count: number }>(
-          `${base}/selections/${id}`,
-          { method: wasSelected ? 'DELETE' : 'PUT' },
-        );
-        apply(res.selected, res.count);
-      } catch (err) {
-        apply(previous.mine, previous.selects);
-        onRemoved(err);
-      }
+      const before = { mine: current.mine, selects: current.selects };
+      apply(want, Math.max(0, current.selects + (want ? 1 : -1)));
+
+      const entry = inflight.current.get(id) ?? { chain: Promise.resolve(), seq: 0 };
+      const seq = entry.seq + 1;
+      const isLatest = () => inflight.current.get(id)?.seq === seq;
+      const chain = entry.chain.then(async () => {
+        try {
+          const res = await api<{ selected: boolean; count: number }>(
+            `${base}/selections/${id}`,
+            { method: want ? 'PUT' : 'DELETE' },
+          );
+          if (isLatest()) apply(res.selected, res.count);
+        } catch (err) {
+          if (isLatest()) apply(before.mine, before.selects);
+          onRemoved(err);
+        }
+      });
+      inflight.current.set(id, { chain, seq });
     },
     [base, data, onRemoved],
   );
@@ -272,6 +293,15 @@ export default function Gallery({
     }
     return groups;
   }, [visible]);
+
+  /** Reviewer ids that picked each frame; follows your own clicks instantly. */
+  const pickersByImage = useMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const [rid, ids] of Object.entries(selectedBy)) {
+      for (const id of ids) (m.get(id) ?? m.set(id, []).get(id)!).push(rid);
+    }
+    return m;
+  }, [selectedBy]);
 
   const albumTotals = useMemo(() => {
     const m = new Map<number, { n: number; mine: number }>();
@@ -327,7 +357,14 @@ export default function Gallery({
     return () => window.removeEventListener('keydown', onKey);
   }, [openIndex, visible, toggle]);
 
-  if (!data) return <div className="wrap"><p className="sub">{loadError || 'Loading…'}</p></div>;
+  if (!data) {
+    return (
+      <div className="wrap">
+        <p className="sub">{loadError || 'Loading…'}</p>
+        {loadError && onBack && <button className="ghost" onClick={onBack}>← Projects</button>}
+      </div>
+    );
+  }
 
   const reviewers = data.reviewers.map((r) => ({ ...r, count: selectedBy[r.id]?.length ?? 0 }));
   const people = reviewers.filter((r) => r.count > 0);
@@ -387,12 +424,10 @@ export default function Gallery({
         {onBack && <button className="ghost" onClick={onBack}>← Projects</button>}
         <h2 className="side-title">{data.project.name}</h2>
         {albumTitle && <p className="meta" style={{ margin: '0 0 4px' }}>{albumTitle}</p>}
-        <p className="meta" style={{ marginBottom: admin ? 4 : 20 }}>
-          {images.length} images · {mineCount} yours · {anyCount} selected
-        </p>
+        {!admin && <div style={{ height: 16 }} />}
         {admin ? (
           <p className="meta" style={{ marginBottom: 20 }}>
-            Selecting as {data.me.name} ·{' '}
+            Reviewing as {data.me.name} ·{' '}
             <button className="text-btn" onClick={async () => {
               const name = window.prompt('Your name, as reviewers and exports will show it:', data.me.name);
               if (!name?.trim()) return;
@@ -649,6 +684,14 @@ export default function Gallery({
             setData((d) => d && { ...d, project: { ...d.project, coverImageId: id } });
           } : undefined}
           albumName={data.albums[visible[openIndex]!.album]?.name}
+          pickers={(() => {
+            // You first, then everyone else in the order they joined.
+            const ids = new Set(pickersByImage.get(visible[openIndex]!.id) ?? []);
+            return reviewers
+              .filter((r) => ids.has(r.id))
+              .sort((a, b) => Number(b.isMe) - Number(a.isMe))
+              .map((r) => (r.isMe ? 'You' : r.name));
+          })()}
         />
       )}
     </div>

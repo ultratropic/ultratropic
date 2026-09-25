@@ -78,6 +78,19 @@ export function hasAnyReviewerCookie(c: Ctx): boolean {
   return header.includes('rv_r_') || header.includes(`${LEGACY_REVIEWER_COOKIE}=`);
 }
 
+/**
+ * Password endpoints take at most N attempts a minute per visitor. Counted
+ * before the password is checked, so the answer never depends on whether the
+ * guess was right.
+ */
+export async function overLimit(limiter: RateLimit | undefined, key: string): Promise<boolean> {
+  if (!limiter) return false;
+  const { success } = await limiter.limit({ key });
+  return !success;
+}
+
+export const visitor = (c: Ctx) => c.req.header('cf-connecting-ip') ?? 'local';
+
 export function canSeeAlbum(s: ReviewerSession, albumId: string): boolean {
   return s.all || s.albums.includes(albumId);
 }

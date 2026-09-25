@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api } from './api';
+import { api, ApiError } from './api';
 import Gallery from './Gallery';
 import Logo from './Logo';
 
@@ -79,8 +79,10 @@ function Unlock({ base, title, onDone }: { base: string; title: string; onDone: 
         body: JSON.stringify({ password }),
       });
       onDone(r.joined);
-    } catch {
-      setErr('Incorrect password.');
+    } catch (error) {
+      setErr(error instanceof ApiError && error.status === 429
+        ? 'Too many attempts. Wait a minute and try again.'
+        : 'Incorrect password.');
       setBusy(false);
     }
   }

@@ -5,6 +5,7 @@ const SWIPE_DISTANCE = 60;   // px: a deliberate horizontal drag
 const SWIPE_VELOCITY = 0.45; // px/ms: or a quick flick
 const TAP_SLOP = 10;         // px of movement still counted as a tap
 const DOUBLE_TAP_MS = 300;
+const SHOWN_PICKERS = 6;       // past this, "+ N more" keeps the caption to a line or two
 
 /**
  * Full-screen review. Keyboard on desktop (arrows, F/Space, Esc); swipe and
@@ -25,6 +26,7 @@ export default function Viewer({
   onSetCover,
   coverId,
   albumName,
+  pickers = [],
 }: {
   images: Img[];
   index: number;
@@ -37,6 +39,8 @@ export default function Viewer({
   onSetCover?: (id: string) => void;
   coverId?: string | null;
   albumName?: string;
+  /** Names of everyone who picked this frame, "You" first. */
+  pickers?: string[];
 }) {
   const img = images[index];
   const [dragX, setDragX] = useState(0);
@@ -173,8 +177,7 @@ export default function Viewer({
           {albumName && <span style={{ marginRight: 10 }}>{albumName}</span>}
           {img.filename}
         </span>
-        <span className="meta viewer-count">
-          {img.selects ? `${img.selects} select${img.selects === 1 ? '' : 's'} · ` : ''}
+        <span className="viewer-count">
           {index + 1} / {images.length}
         </span>
         <button
@@ -209,6 +212,19 @@ export default function Viewer({
           <span key={pulse.key} className="viewer-pulse" onAnimationEnd={() => setPulse(null)}>
             {pulse.on ? '♥' : '♡'}
           </span>
+        )}
+      </div>
+
+      {/* Who picked it, like a caption: a heart and a name per person. */}
+      <div className="viewer-pickers" aria-live="polite">
+        {pickers.slice(0, SHOWN_PICKERS).map((name, i) => (
+          // Two reviewers can share a name, so the position is part of the key.
+          <span key={`${i}-${name}`} className="picker">
+            <span className="picker-heart" aria-hidden="true">♥</span>{name}
+          </span>
+        ))}
+        {pickers.length > SHOWN_PICKERS && (
+          <span className="picker more">+ {pickers.length - SHOWN_PICKERS} more</span>
         )}
       </div>
 

@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { ulid, token, slugify } from '../lib/ids';
 import { hashPassword, timingSafeEqual } from '../lib/crypto';
-import { issueAdminCookie, readAdmin, clearAdminCookie } from '../lib/auth';
+import { issueAdminCookie, readAdmin, clearAdminCookie, overLimit, visitor } from '../lib/auth';
 import type { Env, Vars } from '../types';
 
 const admin = new Hono<{ Bindings: Env; Variables: Vars }>();
@@ -16,6 +16,9 @@ admin.use('*', async (c, next) => {
 });
 
 admin.post('/login', async (c) => {
+  if (await overLimit(c.env.LOGIN_LIMIT, `login:${visitor(c)}`)) {
+    return c.json({ error: 'too many attempts' }, 429);
+  }
   const { password } = await c.req.json<{ password?: string }>().catch(() => ({ password: undefined }));
   if (!password || !timingSafeEqual(password, c.env.ADMIN_PASSWORD)) {
     return c.json({ error: 'invalid password' }, 401);

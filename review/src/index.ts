@@ -47,23 +47,41 @@ app.get('/i/:key', async (c) => {
     if (!session || !canSeeAlbum(session, owner.album_id)) return c.text('not found', 404);
   }
 
+  // Two cache policies for one image. The browser gets `private`: a shared
+  // proxy must never keep a copy. Cloudflare's edge cache, though, won't store a
+  // `private` response at all — so it gets its own `public` copy. That's safe
+  // because the edge cache is only reachable through this Worker, and the access
+  // check above has already run by the time it's consulted.
   const cache = (caches as unknown as { default: Cache }).default;
   const cacheKey = new Request(new URL(c.req.url).toString(), { method: 'GET' });
+  const browserHeaders = (from: Headers) => {
+    const h = new Headers(from);
+    h.set('cache-control', 'private, max-age=31536000, immutable');
+    return h;
+  };
+
   const hit = await cache.match(cacheKey);
-  if (hit) return hit;
+  if (hit) {
+    const h = browserHeaders(hit.headers);
+    h.set('x-review-cache', 'hit');
+    return new Response(hit.body, { headers: h });
+  }
 
   const object = await c.env.BUCKET.get(key);
   if (!object) return c.text('not found', 404);
+  const bytes = await object.arrayBuffer();
 
-  const res = new Response(object.body, {
-    headers: {
-      'content-type': object.httpMetadata?.contentType ?? 'application/octet-stream',
-      'cache-control': 'private, max-age=31536000, immutable',
-      etag: object.httpEtag,
-    },
+  const base = new Headers({
+    'content-type': object.httpMetadata?.contentType ?? 'application/octet-stream',
+    etag: object.httpEtag,
   });
-  c.executionCtx.waitUntil(cache.put(cacheKey, res.clone()));
-  return res;
+  const edge = new Headers(base);
+  edge.set('cache-control', 'public, max-age=31536000, immutable');
+  c.executionCtx.waitUntil(cache.put(cacheKey, new Response(bytes, { headers: edge })));
+
+  const h = browserHeaders(base);
+  h.set('x-review-cache', 'miss');
+  return new Response(bytes, { headers: h });
 });
 
 app.route('/api/admin', adminRoutes);

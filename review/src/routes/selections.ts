@@ -21,7 +21,11 @@ sel.use('*', async (c, next) => {
  */
 const ADMIN_EMAIL = '__admin__';
 
-async function adminReviewer(c: { env: Env }, projectId: string, name?: string): Promise<string> {
+async function adminReviewer(c: { env: Env }, projectId: string, name?: string): Promise<string | null> {
+  // Never mint an identity in a project that doesn't exist: the insert would
+  // fail its foreign key and surface as a 500 instead of a 404.
+  const project = await c.env.DB.prepare(`SELECT id FROM projects WHERE id = ?`).bind(projectId).first();
+  if (!project) return null;
   const now = Date.now();
   const existing = await c.env.DB.prepare(
     `SELECT id FROM reviewers WHERE project_id = ? AND email_norm = ?`,
@@ -57,6 +61,7 @@ sel.post('/projects/:pid/me', async (c) => {
   const projectId = c.req.param('pid');
   const { name } = await c.req.json<{ name?: string }>().catch(() => ({ name: undefined }));
   const reviewerId = await adminReviewer(c, projectId, name);
+  if (!reviewerId) return c.json({ error: 'project not found' }, 404);
   const row = await c.env.DB.prepare(`SELECT display_name FROM reviewers WHERE id = ?`)
     .bind(reviewerId)
     .first<{ display_name: string }>();
@@ -67,6 +72,7 @@ sel.post('/projects/:pid/me', async (c) => {
 sel.get('/projects/:pid/gallery', async (c) => {
   const projectId = c.req.param('pid');
   const reviewerId = await adminReviewer(c, projectId);
+  if (!reviewerId) return c.json({ error: 'project not found' }, 404);
   const payload = await buildGallery(c.env, {
     projectId,
     reviewerId,
@@ -87,6 +93,7 @@ sel.put('/projects/:pid/selections/:imageId', async (c) => {
   const projectId = c.req.param('pid');
   const imageId = c.req.param('imageId');
   const reviewerId = await adminReviewer(c, projectId);
+  if (!reviewerId) return c.json({ error: 'project not found' }, 404);
 
   const image = await c.env.DB.prepare(`SELECT id FROM images WHERE id = ? AND project_id = ?`)
     .bind(imageId, projectId)
@@ -110,6 +117,7 @@ sel.delete('/projects/:pid/selections/:imageId', async (c) => {
   const projectId = c.req.param('pid');
   const imageId = c.req.param('imageId');
   const reviewerId = await adminReviewer(c, projectId);
+  if (!reviewerId) return c.json({ error: 'project not found' }, 404);
 
   await c.env.DB.prepare(`DELETE FROM selections WHERE image_id = ? AND reviewer_id = ?`)
     .bind(imageId, reviewerId)

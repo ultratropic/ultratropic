@@ -7,6 +7,8 @@ import {
   readReviewerFor,
   clearReviewerCookie,
   canSeeAlbum,
+  overLimit,
+  visitor,
 } from '../lib/auth';
 import { buildGallery } from '../lib/gallery';
 import type { Env, ReviewerSession, Vars } from '../types';
@@ -163,6 +165,9 @@ export function reviewerRoutes(resolve: Resolve) {
     if (!t) return c.json({ error: 'not found' }, 404);
     const pw = passwordFor(t);
     if (pw) {
+      if (await overLimit(c.env.UNLOCK_LIMIT, `unlock:${visitor(c)}:${scopeOf(t)}`)) {
+        return c.json({ error: 'too many attempts' }, 429);
+      }
       const { password } = await c.req
         .json<{ password?: string }>()
         .catch(() => ({ password: undefined }));
