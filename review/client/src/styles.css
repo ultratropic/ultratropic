@@ -399,3 +399,12 @@ button.ghost.danger:hover { border-color: #c0392b; }
 /* Downloads off: no easy save — no long-press "Save to Photos", no drag to desktop. */
 .gallery.no-save img { -webkit-touch-callout: none; -webkit-user-drag: none; user-select: none; }
 .radio.setting { font-size: 13px; margin: 0 0 18px; }
+
+/* ---- a view shared with a client ---- */
+.share-note {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  margin: 4px 0 14px; padding: 10px 14px; font-size: 13px;
+  border: 1px solid var(--line); border-radius: 3px;
+}
+.share-note strong { font-weight: 500; }
+.share-note .text-btn:last-child { margin-left: auto; font-size: 18px; line-height: 1; }

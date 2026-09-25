@@ -32,11 +32,11 @@ export async function buildGallery(env: Env, o: Options) {
 
   const [albumsRes, imagesRes, selectionsRes, reviewersRes] = await Promise.all([
     env.DB.prepare(
-      `SELECT id, name, share_token, password_hash IS NOT NULL AS has_password
+      `SELECT id, name, slug, share_token, password_hash IS NOT NULL AS has_password
          FROM albums WHERE project_id = ? ORDER BY seq`,
     )
       .bind(o.projectId)
-      .all<{ id: string; name: string; share_token: string | null; has_password: number }>(),
+      .all<{ id: string; name: string; slug: string; share_token: string | null; has_password: number }>(),
     env.DB.prepare(
       `SELECT i.id, i.original_filename, i.thumb_key, i.preview_key, i.width, i.height,
               i.album_id, i.checksum
@@ -114,6 +114,7 @@ export async function buildGallery(env: Env, o: Options) {
     albums: albums.map((a) => ({
       id: a.id,
       name: a.name,
+      slug: a.slug,
       ...(o.admin ? { shareToken: a.share_token, hasPassword: a.has_password === 1 } : {}),
     })),
     reviewers: reviewersRes.results

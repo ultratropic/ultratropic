@@ -17,7 +17,7 @@ export interface GalleryImg extends Img {
   dup: boolean;
 }
 
-interface Album extends ShareState { id: string; name: string }
+interface Album extends ShareState { id: string; name: string; slug: string }
 interface Reviewer { id: string; name: string; isMe: boolean; count: number; lastSeen?: number; hidden?: boolean }
 
 interface GalleryData {
@@ -84,6 +84,12 @@ export default function Gallery({
   const [activeAlbum, setActiveAlbum] = useState(0);
   useNoZoom();
   const [initialView] = useState(viewFromUrl);
+  const [arrival] = useState(() => {
+    const q = new URLSearchParams(location.search);
+    return { shared: q.get('shared') === '1', album: q.get('album') };
+  });
+  const [shareNote, setShareNote] = useState(arrival.shared && !admin);
+  const [copiedAlbum, setCopiedAlbum] = useState<string | null>(null);
   const [mode, setMode] = useState<'browse' | 'upload' | 'stats'>(initialView.stats ? 'stats' : 'browse');
   const [filter, setFilter] = useState<Filter>(initialView.filter);
   const restored = useRef(false);
@@ -193,6 +199,28 @@ export default function Gallery({
     window.addEventListener('scroll', save, { passive: true });
     return () => { window.removeEventListener('scroll', save); clearTimeout(t); };
   }, []);
+
+  useEffect(() => {
+    if (restored.current || !data || images.length === 0 || !arrival.album) return;
+    const i = data.albums.findIndex((a) => a.slug === arrival.album);
+    if (i < 0) return;
+    restored.current = true;
+    let tries = 0;
+    const land = () => {
+      const el = sectionRefs.current[i];
+      if (el && el.getBoundingClientRect().height > 0) {
+        el.scrollIntoView({ block: 'start' });
+        // Let the sidebar highlight catch up with where we landed.
+        window.dispatchEvent(new Event('scroll'));
+      } else if (tries++ < 20) setTimeout(land, 50);
+    };
+    setTimeout(land, 0);
+  }, [data, images.length, arrival.album]);
+
+  // Browsing away from what was shared retires the note.
+  useEffect(() => {
+    if (JSON.stringify(filter) !== JSON.stringify(initialView.filter)) setShareNote(false);
+  }, [filter, initialView.filter]);
 
   useEffect(() => {
     if (restored.current || images.length === 0 || mode !== 'browse') return;
@@ -434,6 +462,36 @@ export default function Gallery({
           </button>
   ) : null;
 
+  const shareBase = data.project.slug ? `${location.origin}/p/${data.project.slug}` : null;
+  /** The reviewer link for the current view: where a client lands when they open it. */
+  const shareTarget: { url: string; label: string; hiddenPerson?: boolean } | null = (() => {
+    if (!shareBase) return null;
+    const personLink = (id: string) => {
+      const r = reviewers.find((x) => x.id === id);
+      return { url: `${shareBase}?person=${id}&shared=1`, label: `${r?.name ?? 'their'}'s selects`, hiddenPerson: !!r?.hidden };
+    };
+    if (mode !== 'browse') return { url: shareBase, label: 'all photos' };
+    switch (filter.kind) {
+      case 'mine': return personLink(data.me.id);
+      case 'reviewer': return personLink(filter.id);
+      case 'any': return { url: `${shareBase}?show=all&shared=1`, label: 'all selects' };
+      default: return { url: shareBase, label: 'all photos' };
+    }
+  })();
+
+  /** For the person who opened a shared link: what they were sent. */
+  const sharedLabel = (() => {
+    if (!shareNote) return null;
+    if (arrival.album) return data.albums.find((a) => a.slug === arrival.album)?.name ?? null;
+    const f = initialView.filter;
+    if (f.kind === 'reviewer') {
+      const r = reviewers.find((x) => x.id === f.id);
+      return r ? `${r.name}'s selects` : null;
+    }
+    if (f.kind === 'any') return 'All selects';
+    return null;
+  })();
+
   const viewLabel =
     mode === 'stats' ? 'People & stats'
       : mode === 'upload' ? 'Add photos'
@@ -593,8 +651,13 @@ export default function Gallery({
             )}
             {data.project.slug && (
               <>
-                <label>Reviewer link · all albums</label>
-                <CopyLink url={`${location.origin}/p/${data.project.slug}`} />
+                <label>Reviewer link · opens on {shareTarget?.label}</label>
+                <CopyLink url={shareTarget?.url ?? `${location.origin}/p/${data.project.slug}`} />
+                {shareTarget?.hiddenPerson && (
+                  <p className="meta" style={{ margin: '-10px 0 16px' }}>
+                    This person is hidden from reviewers, so the link opens on all photos.
+                  </p>
+                )}
               </>
             )}
             <label className="radio setting">
@@ -706,6 +769,17 @@ export default function Gallery({
           />
         )}
 
+        {sharedLabel && mode === 'browse' && (
+          <div className="share-note">
+            <span>Shared with you: <strong>{sharedLabel}</strong></span>
+            <button className="text-btn" onClick={() => {
+              setShareNote(false);
+              setFilter({ kind: 'all' });
+              window.scrollTo(0, 0);
+            }}>See all photos</button>
+            <button className="text-btn" aria-label="Dismiss" onClick={() => setShareNote(false)}>×</button>
+          </div>
+        )}
         {mode === 'browse' && images.length === 0 && !admin && (
           <p className="sub" style={{ padding: '24px 0' }}>No photos here yet. Check back soon.</p>
         )}
@@ -734,8 +808,25 @@ export default function Gallery({
                 </span>
                 {admin && (
                   <span className="section-actions">
-                    <button className="text-btn" onClick={() => setSharing(sharing === album.id ? null : album.id)}>
-                      {album.shareToken ? 'Client link' : 'Share'}
+                    {shareBase && (
+                      <button
+                        className="text-btn"
+                        title="The full project, opened at this album"
+                        onClick={async () => {
+                          await navigator.clipboard.writeText(`${shareBase}?album=${album.slug}&shared=1`).catch(() => {});
+                          setCopiedAlbum(album.id);
+                          setTimeout(() => setCopiedAlbum((c) => (c === album.id ? null : c)), 1500);
+                        }}
+                      >
+                        {copiedAlbum === album.id ? 'Copied' : 'Copy link'}
+                      </button>
+                    )}
+                    <button
+                      className="text-btn"
+                      title="A link to this album only, optionally with its own password"
+                      onClick={() => setSharing(sharing === album.id ? null : album.id)}
+                    >
+                      Private link
                     </button>
                     <button className="text-btn danger" onClick={async () => {
                       const n = images.filter((x) => x.album === i).length;
