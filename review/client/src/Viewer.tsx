@@ -237,7 +237,8 @@ export default function Viewer({
             aria-pressed={!!img.mine}
             onClick={(e) => { e.stopPropagation(); onToggle(img.id); }}
           >
-            {img.mine ? '♥' : '♡'} {img.mine ? 'Selected' : 'Select'}
+            {/* The red fill says it's selected; the word stays put. */}
+            {img.mine ? '♥' : '♡'} Select
           </button>
         ) : <span />}
         <span className="viewer-actions">
