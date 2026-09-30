@@ -28,3 +28,15 @@ export function isJunk(path: string): boolean {
   const name = path.split('/').pop() ?? path;
   return name.startsWith('._') || path.includes('__MACOSX/') || name.startsWith('.');
 }
+
+/**
+ * Image files the uploader accepts. Every one is converted to the same stored
+ * format, so what goes in only has to be something a browser can decode.
+ */
+export const PHOTO_EXT = /\.(jpe?g|png|webp|heic|heif|tiff?|avif|gif|bmp)$/i;
+export const isPhoto = (name: string) => PHOTO_EXT.test(name);
+
+/** Formats only some browsers can decode (HEIC and TIFF: Safari; AVIF: recent browsers). */
+export const MAYBE_UNSUPPORTED = /\.(heic|heif|tiff?|avif)$/i;
+
+export const extOf = (name: string) => (name.match(/\.([^.]+)$/)?.[1] ?? '').toUpperCase();

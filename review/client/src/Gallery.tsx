@@ -609,6 +609,7 @@ export default function Gallery({
               <a href={exportHref('csv')} download aria-disabled={exportCount === 0}>CSV</a>
               <a href={exportHref('txt')} download aria-disabled={exportCount === 0}>Filenames</a>
             </div>
+            {/* Capture One script link: held back until the script is tested against a real session. */}
           </>
         )}
 

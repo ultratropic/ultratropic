@@ -1,5 +1,5 @@
 import type { UploadFile } from './uploadPipeline';
-import { isJunk, stripExt } from '../../shared/names';
+import { isJunk, isPhoto, stripExt } from '../../shared/names';
 
 interface Entry {
   path: string;
@@ -106,7 +106,7 @@ async function loadEntry(file: File, e: Entry): Promise<ArrayBuffer> {
 }
 
 /**
- * The JPEGs in a ZIP, each assigned to an album: the folder it sits in inside
+ * The photos in a ZIP, each assigned to an album: the folder it sits in inside
  * the archive, or the archive's own name for files at the top level. Resource
  * forks under __MACOSX/ and "._" files — which macOS adds and which also end in
  * .jpg — are dropped.
@@ -115,7 +115,7 @@ export async function expandZip(file: File): Promise<UploadFile[]> {
   const entries = await readDirectory(file);
   const fallback = stripExt(file.name);
   return entries
-    .filter((e) => /\.jpe?g$/i.test(e.path) && !isJunk(e.path))
+    .filter((e) => isPhoto(e.path) && !isJunk(e.path))
     .map((e) => {
       const parts = e.path.split('/');
       return {

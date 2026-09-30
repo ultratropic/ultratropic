@@ -96,6 +96,10 @@ async function encode(bitmap: ImageBitmap, edge: number, quality: number): Promi
   if (!ctx) throw new Error('no 2d context');
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
+  // Transparent PNGs, GIFs etc. sit on white, so they look the same whichever
+  // format the browser can encode (a JPEG fallback would otherwise turn it black).
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, w, h);
   ctx.drawImage(bitmap, 0, 0, w, h);
 
   // Not every browser can ENCODE WebP even when it decodes it happily — Safari
@@ -127,7 +131,14 @@ self.onmessage = async (e: MessageEvent<ResizeRequest>) => {
     // imageOrientation: 'from-image' applies the EXIF rotation during decode, so
     // everything downstream works in display orientation. Files with the tag already
     // baked in are unaffected.
-    const bitmap = await createImageBitmap(new Blob([buffer]), { imageOrientation: 'from-image' });
+    let bitmap: ImageBitmap;
+    try {
+      bitmap = await createImageBitmap(new Blob([buffer]), { imageOrientation: 'from-image' });
+    } catch {
+      const ext = (filename.match(/\.([^.]+)$/)?.[1] ?? 'this').toUpperCase();
+      throw new Error(`this browser can't read ${ext} files` +
+        (/^(HEIC|HEIF|TIFF?)$/.test(ext) ? ' — upload them from Safari, or export as JPEG' : ''));
+    }
 
     const [preview, thumb] = await Promise.all([
       encode(bitmap, previewEdge, 0.72),

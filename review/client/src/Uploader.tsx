@@ -3,9 +3,8 @@ import { api } from './api';
 import { uploadFiles, type Progress, type UploadFile } from './uploadPipeline';
 import { detectSplits, albumFor, type SplitOption } from './split';
 import { expandZip } from './zip';
-import { isJunk, rawMatch } from '../../shared/names';
+import { isJunk, isPhoto, rawMatch, MAYBE_UNSUPPORTED, extOf } from '../../shared/names';
 
-const isJpeg = (name: string) => /\.jpe?g$/i.test(name);
 const isZip = (name: string) => /\.zip$/i.test(name);
 
 function fromFile(file: File, folder: string): UploadFile {
@@ -19,7 +18,7 @@ async function fromPicked(list: FileList, fallbackFolder: string): Promise<Uploa
     const rel = (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name;
     if (isJunk(rel)) continue;
     if (isZip(f.name)) out.push(...(await expandZip(f)));
-    else if (isJpeg(f.name)) {
+    else if (isPhoto(f.name)) {
       const parts = rel.split('/');
       out.push(fromFile(f, parts.length > 1 ? parts[parts.length - 2]! : fallbackFolder));
     }
@@ -52,7 +51,7 @@ async function walk(entry: FileSystemEntry, parent: string, out: UploadFile[]): 
   if (isJunk(entry.fullPath)) return;
   const file = await new Promise<File>((res, rej) => (entry as FileSystemFileEntry).file(res, rej));
   if (isZip(file.name)) out.push(...(await expandZip(file)));
-  else if (isJpeg(file.name)) out.push(fromFile(file, parent));
+  else if (isPhoto(file.name)) out.push(fromFile(file, parent));
 }
 
 export default function Uploader({
@@ -75,15 +74,36 @@ export default function Uploader({
   const [over, setOver] = useState(false);
   const [reading, setReading] = useState(false);
   const [error, setError] = useState('');
+  /** Formats (by extension) this browser turned out not to decode, e.g. HEIC in Chrome. */
+  const [unreadable, setUnreadable] = useState<Set<string>>(new Set());
+  const [checking, setChecking] = useState(false);
 
   async function stage(files: UploadFile[]) {
     setReading(false);
     if (!files.length) {
-      setError('No JPEGs found there.');
+      setError('No photos found there.');
       return;
     }
     setError('');
     setStaged(files);
+    setUnreadable(new Set());
+    void (async () => {
+      const samples = new Map<string, UploadFile>();
+      for (const f of files) if (MAYBE_UNSUPPORTED.test(f.name) && !samples.has(extOf(f.name))) samples.set(extOf(f.name), f);
+      if (!samples.size) return;
+      setChecking(true);
+      const bad = new Set<string>();
+      for (const [ext, f] of samples) {
+        try {
+          const bitmap = await createImageBitmap(new Blob([await f.load()]));
+          bitmap.close();
+        } catch {
+          bad.add(ext);
+        }
+      }
+      setUnreadable(bad);
+      setChecking(false);
+    })();
     setSplits(detectSplits(files.map((f) => f.name)));
     setChosen(-1);
     setProgress(null);
@@ -159,7 +179,10 @@ export default function Uploader({
   }, [resolved]);
 
   const alreadyThere = resolved.filter((f) => existing[f.name]);
-  const toUpload = skipExisting ? resolved.filter((f) => !existing[f.name]) : resolved;
+  const skippedFormats = resolved.filter((f) => unreadable.has(extOf(f.name)));
+  const toUpload = resolved
+    .filter((f) => !unreadable.has(extOf(f.name)))
+    .filter((f) => !skipExisting || !existing[f.name]);
 
   async function begin() {
     setProgress({ total: toUpload.length, done: 0, failed: 0, skipped: 0,
@@ -232,6 +255,18 @@ export default function Uploader({
           </div>
         )}
 
+        {skippedFormats.length > 0 && (
+          <div className="notice">
+            <strong>
+              {skippedFormats.length} {[...unreadable].join(' / ')} {skippedFormats.length === 1 ? "file can't" : "files can't"} be read in this browser.
+            </strong>{' '}
+            {[...unreadable].some((e) => /^(HEIC|HEIF|TIFF?)$/.test(e))
+              ? 'Only Safari can open HEIC and TIFF. Upload these from Safari, or export them as JPEG. '
+              : 'Try a newer browser, or export them as JPEG. '}
+            They'll be skipped; everything else uploads as normal.
+          </div>
+        )}
+
         {rawCollisions.length > 0 && (
           <div className="notice">
             <strong>{rawCollisions.length} {rawCollisions.length === 1 ? 'frame has' : 'frames have'} more than one JPEG.</strong>{' '}
@@ -245,8 +280,8 @@ export default function Uploader({
         )}
 
         <div style={{ marginTop: 20 }}>
-          <button onClick={begin} disabled={toUpload.length === 0}>
-            Upload {toUpload.length} {toUpload.length === 1 ? 'image' : 'images'}
+          <button onClick={begin} disabled={toUpload.length === 0 || checking}>
+            {checking ? 'Checking formats…' : `Upload ${toUpload.length} ${toUpload.length === 1 ? 'image' : 'images'}`}
           </button>{' '}
           <button className="ghost" onClick={() => setStaged(null)}>Cancel</button>
         </div>
@@ -276,7 +311,7 @@ export default function Uploader({
           </label>
           <label className="pick">
             Choose files or .zip
-            <input type="file" multiple hidden accept=".jpg,.jpeg,.zip,image/jpeg,application/zip"
+            <input type="file" multiple hidden accept=".jpg,.jpeg,.png,.webp,.heic,.heif,.tif,.tiff,.avif,.gif,.bmp,.zip,image/*,application/zip"
               onChange={(e) => { void onPick(e.target.files); e.target.value = ''; }} />
           </label>
         </>
