@@ -4,12 +4,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "npm run c1 && tsc -b && vite build",
     "preview": "npm run build && wrangler dev",
     "deploy": "npm run build && wrangler deploy",
     "db:local": "wrangler d1 migrations apply review-db --local",
     "db:remote": "wrangler d1 migrations apply review-db --remote",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "c1": "osacompile -l JavaScript -o client/public/capture-one/import-review-selects.scpt \"capture-one/Import Review Selects.js\""
   },
   "dependencies": {
     "hono": "^4.6.14",
