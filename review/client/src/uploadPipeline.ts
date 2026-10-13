@@ -19,8 +19,10 @@ export interface Progress {
   skipped: number;
   current: string;
   phase: 'idle' | 'resizing' | 'committing' | 'done';
-  /** First few failures, verbatim. A bare count tells you nothing actionable. */
+  /** Every failure, verbatim. A bare count tells you nothing actionable. */
   errors: string[];
+  /** The files behind those failures, so they can be retried without re-dropping the folder. */
+  failedFiles: UploadFile[];
 }
 
 const THUMB_EDGE = 400;
@@ -142,8 +144,28 @@ export async function uploadFiles(
     albumIds.set(folder, album.id);
   }
 
+  // The local record only says a file was committed once. It may have been deleted
+  // since, so it counts as done only while the server still has that filename.
+  let onServer = new Set<string>();
+  if (alreadyDone.size) {
+    try {
+      const res = await api<{ existing: Record<string, string> }>(
+        `/api/admin/projects/${projectId}/existing`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ names: files.map((f) => f.name) }),
+        },
+      );
+      onServer = new Set(Object.keys(res.existing));
+    } catch {
+      // Unknown: upload everything, the server ignores what it already has.
+    }
+  }
+
   const pending = files.filter(
-    (f) => !alreadyDone.has(`${projectId}:${albumIds.get(f.folder)}:${f.name}`),
+    (f) =>
+      !(onServer.has(f.name) && alreadyDone.has(`${projectId}:${albumIds.get(f.folder)}:${f.name}`)),
   );
 
   const progress: Progress = {
@@ -154,8 +176,17 @@ export async function uploadFiles(
     current: '',
     phase: 'resizing',
     errors: [],
+    failedFiles: [],
   };
   onProgress({ ...progress });
+
+  function fail(item: UploadFile, err: unknown): void {
+    progress.failed++;
+    progress.failedFiles.push(item);
+    const message = `${item.name}: ${(err as Error).message}`;
+    progress.errors.push(message);
+    console.error('[upload]', message, err);
+  }
 
   const poolSize = Math.max(2, Math.min(navigator.hardwareConcurrency || 4, 8));
   const workers = Array.from({ length: poolSize }, () =>
@@ -163,21 +194,36 @@ export async function uploadFiles(
   );
 
   const queue = [...pending];
-  const commitBuffer: Array<Record<string, unknown>> = [];
+  const commitBuffer: Array<{ item: UploadFile; image: Record<string, unknown> }> = [];
 
-  async function flush(force = false): Promise<void> {
-    if (commitBuffer.length === 0) return;
-    if (!force && commitBuffer.length < COMMIT_BATCH) return;
-    const batch = commitBuffer.splice(0, commitBuffer.length);
-    await withRetry(() =>
-      api(`/api/admin/projects/${projectId}/images`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ images: batch }),
-      }),
-    );
-    for (const img of batch) {
-      await idbPut(db, `${projectId}:${img.albumId}:${img.filename}`);
+  /**
+   * Commit buffered images. A batch that can't be committed goes back in the buffer
+   * for the next attempt; on the last attempt its files are reported as failed
+   * rather than left counted as done.
+   */
+  async function flush(final = false): Promise<void> {
+    while (commitBuffer.length >= (final ? 1 : COMMIT_BATCH)) {
+      const batch = commitBuffer.splice(0, COMMIT_BATCH);
+      try {
+        await withRetry(() =>
+          api(`/api/admin/projects/${projectId}/images`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ images: batch.map((b) => b.image) }),
+          }),
+        );
+      } catch (err) {
+        if (!final) {
+          commitBuffer.unshift(...batch);
+          return;
+        }
+        progress.done -= batch.length;
+        for (const b of batch) fail(b.item, err);
+        continue;
+      }
+      for (const b of batch) {
+        await idbPut(db, `${projectId}:${b.image.albumId}:${b.image.filename}`);
+      }
     }
   }
 
@@ -191,11 +237,22 @@ export async function uploadFiles(
       try {
         const buffer = await item.load();
         const result = await new Promise<ResizeResult>((resolve, reject) => {
-          const onMessage = (e: MessageEvent<ResizeResult>) => {
+          // A worker that dies (out of memory on a huge file) never answers; without
+          // the error listener this promise, and the whole upload, would hang.
+          const cleanup = () => {
             worker.removeEventListener('message', onMessage);
+            worker.removeEventListener('error', onError);
+          };
+          const onMessage = (e: MessageEvent<ResizeResult>) => {
+            cleanup();
             e.data.error ? reject(new Error(e.data.error)) : resolve(e.data);
           };
+          const onError = (e: ErrorEvent) => {
+            cleanup();
+            reject(new Error(e.message || 'could not process this file'));
+          };
           worker.addEventListener('message', onMessage);
+          worker.addEventListener('error', onError);
           const req: ResizeRequest = {
             id: item.name,
             filename: item.name,
@@ -212,23 +269,23 @@ export async function uploadFiles(
         ]);
 
         commitBuffer.push({
-          albumId,
-          filename: result.filename,
-          thumbKey,
-          previewKey,
-          width: result.width,
-          height: result.height,
-          captureTime: result.captureTime,
-          checksum: result.checksum,
+          item,
+          image: {
+            albumId,
+            filename: result.filename,
+            thumbKey,
+            previewKey,
+            width: result.width,
+            height: result.height,
+            captureTime: result.captureTime,
+            checksum: result.checksum,
+          },
         });
         progress.done++;
-        await flush();
       } catch (err) {
-        progress.failed++;
-        const message = `${item.name}: ${(err as Error).message}`;
-        if (progress.errors.length < 5) progress.errors.push(message);
-        console.error('[upload]', message, err);
+        fail(item, err);
       }
+      await flush();
       onProgress({ ...progress });
     }
   }

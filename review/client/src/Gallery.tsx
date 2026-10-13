@@ -93,6 +93,7 @@ export default function Gallery({
   const [mode, setMode] = useState<'browse' | 'upload' | 'stats'>(initialView.stats ? 'stats' : 'browse');
   const [filter, setFilter] = useState<Filter>(initialView.filter);
   const restored = useRef(false);
+  const holdUpload = useRef(false);
   const [selectedBy, setSelectedBy] = useState<Record<string, string[]>>({});
   const [sharing, setSharing] = useState<string | null>(null);
   const [dl, setDl] = useState<{ done: number; total: number; label: string; error?: string } | null>(null);
@@ -144,7 +145,9 @@ export default function Gallery({
     setSelectedBy(d.selectionsByReviewer ?? {});
     // An empty project has nothing to browse — go straight to adding photos.
     // Only the owner is sent to the uploader when there's nothing to show.
-    setMode((m) => (d.rows.length === 0 && admin ? 'upload' : m === 'upload' ? 'browse' : m));
+    // After an upload with failures, stay put: leaving would throw away the list of
+    // what failed and the button that retries it.
+    setMode((m) => (d.rows.length === 0 && admin ? 'upload' : m === 'upload' && !holdUpload.current ? 'browse' : m));
   }, [base, onRemoved, admin]);
 
   useEffect(() => { void loadGallery(); }, [loadGallery]);
@@ -742,7 +745,7 @@ export default function Gallery({
               projectId={data.project.id}
               projectName={data.project.name}
               previewEdge={data.project.previewEdge}
-              onDone={() => { void loadGallery(); }}
+              onDone={(failed) => { holdUpload.current = failed > 0; void loadGallery(); }}
             />
           </div>
         )}

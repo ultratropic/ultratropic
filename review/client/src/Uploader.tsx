@@ -63,7 +63,8 @@ export default function Uploader({
   projectId: string;
   projectName: string;
   previewEdge: number;
-  onDone: () => void;
+  /** Called when a run ends, with how many files didn't make it. */
+  onDone: (failed: number) => void;
 }) {
   const [staged, setStaged] = useState<UploadFile[] | null>(null);
   const [splits, setSplits] = useState<SplitOption[]>([]);
@@ -104,7 +105,7 @@ export default function Uploader({
       setUnreadable(bad);
       setChecking(false);
     })();
-    setSplits(detectSplits(files.map((f) => f.name)));
+    setSplits(detectSplits(files.map((f) => f.name), files.map((f) => f.folder)));
     setChosen(-1);
     setProgress(null);
     try {
@@ -184,20 +185,23 @@ export default function Uploader({
     .filter((f) => !unreadable.has(extOf(f.name)))
     .filter((f) => !skipExisting || !existing[f.name]);
 
-  async function begin() {
-    setProgress({ total: toUpload.length, done: 0, failed: 0, skipped: 0,
-      current: 'starting…', phase: 'resizing', errors: [] });
+  /** `files` already carry their final album, so a retry lands exactly where the first try aimed. */
+  async function begin(files: UploadFile[] = toUpload) {
+    setProgress({ total: files.length, done: 0, failed: 0, skipped: 0,
+      current: 'starting…', phase: 'resizing', errors: [], failedFiles: [] });
+    let failed = files.length;
     try {
-      await uploadFiles(projectId, toUpload, previewEdge, setProgress);
+      failed = (await uploadFiles(projectId, files, previewEdge, setProgress)).failed;
       setStaged(null);
     } catch (err) {
       setProgress((p) => ({
-        ...(p ?? { total: toUpload.length, done: 0, failed: 0, skipped: 0, current: '', phase: 'done' as const }),
+        ...(p ?? { total: files.length, done: 0, failed: 0, skipped: 0, current: '' }),
         phase: 'done',
-        errors: [`upload could not start: ${(err as Error).message}`],
+        errors: [`upload stopped: ${(err as Error).message}`],
+        failedFiles: files,
       }));
     }
-    onDone();
+    onDone(failed);
   }
 
   if (progress) {
@@ -212,13 +216,24 @@ export default function Uploader({
         {progress.errors.length > 0 && (
           <div style={{ marginTop: 16 }}>
             <label>Why they failed</label>
-            {progress.errors.map((e, i) => (
-              <p key={i} className="mono err" style={{ margin: '0 0 6px' }}>{e}</p>
-            ))}
+            <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+              {progress.errors.map((e, i) => (
+                <p key={i} className="mono err" style={{ margin: '0 0 6px' }}>{e}</p>
+              ))}
+            </div>
           </div>
         )}
         {progress.phase === 'done' && (
-          <button className="ghost" style={{ marginTop: 16 }} onClick={() => setProgress(null)}>Add more</button>
+          <div style={{ marginTop: 16 }}>
+            {progress.failedFiles.length > 0 && (
+              <>
+                <button onClick={() => void begin(progress.failedFiles)}>
+                  Retry {progress.failedFiles.length} failed
+                </button>{' '}
+              </>
+            )}
+            <button className="ghost" onClick={() => setProgress(null)}>Add more</button>
+          </div>
         )}
       </div>
     );
@@ -280,7 +295,7 @@ export default function Uploader({
         )}
 
         <div style={{ marginTop: 20 }}>
-          <button onClick={begin} disabled={toUpload.length === 0 || checking}>
+          <button onClick={() => void begin()} disabled={toUpload.length === 0 || checking}>
             {checking ? 'Checking formats…' : `Upload ${toUpload.length} ${toUpload.length === 1 ? 'image' : 'images'}`}
           </button>{' '}
           <button className="ghost" onClick={() => setStaged(null)}>Cancel</button>
