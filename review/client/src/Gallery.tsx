@@ -81,6 +81,33 @@ export default function Gallery({
   const [data, setData] = useState<GalleryData | null>(null);
   const [images, setImages] = useState<GalleryImg[]>([]);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
+
+  // Full screen gets its own history entry, so Back (the button, or an edge
+  // swipe on a phone) closes it instead of leaving the gallery.
+  const openViewer = useCallback((i: number) => {
+    if (!history.state?.viewer) history.pushState({ ...history.state, viewer: true }, '');
+    setOpenIndex(i);
+  }, []);
+  // history.back() is async: a second close before popstate lands (Escape and a
+  // click together) would step back twice, out of the gallery.
+  const closing = useRef(false);
+  const closeViewer = useCallback(() => {
+    if (closing.current) return;
+    if (history.state?.viewer) {
+      closing.current = true;
+      history.back(); // popstate below does the closing
+    } else setOpenIndex(null);
+  }, []);
+  useEffect(() => {
+    // A refresh while full screen leaves the marker behind with nothing open.
+    if (history.state?.viewer) history.replaceState({ ...history.state, viewer: false }, '');
+    const onPop = () => {
+      closing.current = false;
+      if (!history.state?.viewer) setOpenIndex(null);
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
   const [activeAlbum, setActiveAlbum] = useState(0);
   useNoZoom();
   const [initialView] = useState(viewFromUrl);
@@ -185,7 +212,7 @@ export default function Gallery({
   useEffect(() => {
     if (mode === 'upload') return;
     const query = viewToQuery(filter, mode === 'stats');
-    if (location.search !== query) history.replaceState(null, '', location.pathname + query);
+    if (location.search !== query) history.replaceState(history.state, '', location.pathname + query);
   }, [filter, mode]);
 
   // Remember scroll position per view, and put it back after a refresh. The
@@ -361,9 +388,9 @@ export default function Gallery({
   // deselecting while filtered to "My selects").
   useEffect(() => {
     if (openIndex === null) return;
-    if (visible.length === 0) setOpenIndex(null);
+    if (visible.length === 0) closeViewer();
     else if (openIndex > visible.length - 1) setOpenIndex(visible.length - 1);
-  }, [visible.length, openIndex]);
+  }, [visible.length, openIndex, closeViewer]);
 
   // Highlight whichever album heading is nearest the top of the viewport.
   useEffect(() => {
@@ -856,7 +883,8 @@ export default function Gallery({
                 images={list}
                 onOpen={(localIndex) => {
                   const img = list[localIndex];
-                  if (img) setOpenIndex(indexOf.get(img.id) ?? null);
+                  const i = img ? indexOf.get(img.id) : undefined;
+                  if (i !== undefined) openViewer(i);
                 }}
                 onToggle={toggle}
                 onDownload={canDownload ? downloadFrame : undefined}
@@ -895,7 +923,7 @@ export default function Gallery({
           images={visible}
           index={openIndex}
           onIndex={setOpenIndex}
-          onClose={() => setOpenIndex(null)}
+          onClose={closeViewer}
           onToggle={toggle}
           onDelete={admin ? deleteImage : undefined}
           // With no cover chosen, the first frame of the shoot stands in.
