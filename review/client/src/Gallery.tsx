@@ -70,6 +70,10 @@ function viewToQuery(filter: Filter, stats: boolean): string {
   }
 }
 
+/** Selected by two or more people. U+FE0E keeps the heart a text glyph, not a red emoji, on iOS. */
+const AGREED = '\u22652 \u2665\uFE0E';
+const AGREED_WORDS = 'Selected by 2 or more people';
+
 const scrollKey = () => `review-scroll:${location.pathname}${location.search}`;
 
 export default function Gallery({
@@ -446,7 +450,7 @@ export default function Gallery({
   const exportWho = filter.kind === 'mine' ? data.me.id : filter.kind === 'reviewer' ? filter.id : 'all';
   const exportAgreed = filter.kind === 'agreed';
   const exportLabel =
-    exportAgreed ? 'Selected by 2+'
+    exportAgreed ? AGREED
       : exportWho === 'all' ? 'All selects'
       : exportWho === data.me.id ? 'My selects'
         : `${reviewers.find((r) => r.id === exportWho)?.name ?? 'Their'}'s selects`;
@@ -458,7 +462,7 @@ export default function Gallery({
   const downloadPhrase =
     filter.kind === 'mine' ? 'my selects'
       : filter.kind === 'any' ? 'all selects'
-        : filter.kind === 'agreed' ? 'photos selected by 2+'
+        : filter.kind === 'agreed' ? AGREED
         : filter.kind === 'dup' ? 'possible duplicates'
           : filter.kind === 'reviewer' ? `${reviewers.find((r) => r.id === filter.id)?.name ?? 'their'}'s selects`
             : 'all photos';
@@ -474,7 +478,7 @@ export default function Gallery({
     dlAbort.current = controller;
     setDl({ done: 0, total: items.length, label: downloadPhrase });
     try {
-      await downloadZip(items, `${data.project.name} - ${capitalised}`,
+      await downloadZip(items, `${data.project.name} - ${filter.kind === 'agreed' ? 'Selected by 2+' : capitalised}`,
         (done, total) => setDl((d) => d && { ...d, done, total }), controller.signal);
       setDl((d) => d && { ...d, done: d.total });
       setTimeout(() => setDl((d) => (d && d.done >= d.total && !d.error ? null : d)), 2500);
@@ -514,7 +518,7 @@ export default function Gallery({
       case 'mine': return personLink(data.me.id);
       case 'reviewer': return personLink(filter.id);
       case 'any': return { url: `${shareBase}?show=all&shared=1`, label: 'all selects' };
-      case 'agreed': return { url: `${shareBase}?show=2plus&shared=1`, label: 'photos selected by 2+' };
+      case 'agreed': return { url: `${shareBase}?show=2plus&shared=1`, label: AGREED };
       default: return { url: shareBase, label: 'all photos' };
     }
   })();
@@ -529,7 +533,7 @@ export default function Gallery({
       return r ? `${r.name}'s selects` : null;
     }
     if (f.kind === 'any') return 'All selects';
-    if (f.kind === 'agreed') return 'Selected by 2+';
+    if (f.kind === 'agreed') return AGREED;
     return null;
   })();
 
@@ -538,7 +542,7 @@ export default function Gallery({
       : mode === 'upload' ? 'Add photos'
         : filter.kind === 'mine' ? 'My selects'
           : filter.kind === 'any' ? 'All selects'
-            : filter.kind === 'agreed' ? 'Selected by 2+'
+            : filter.kind === 'agreed' ? AGREED
             : filter.kind === 'dup' ? 'Possible duplicates'
               : filter.kind === 'reviewer' ? (reviewers.find((r) => r.id === filter.id)?.name ?? 'Selects')
                 : 'All photos';
@@ -600,10 +604,12 @@ export default function Gallery({
             { key: 'all', label: 'All photos', n: images.length },
             { key: 'mine', label: 'My selects', n: mineCount },
             { key: 'any', label: 'All selects', n: anyCount },
-            { key: 'agreed', label: 'Selected by 2+', n: agreedCount },
+            { key: 'agreed', label: AGREED, n: agreedCount, title: AGREED_WORDS },
           ] as const).map((f) => (
             <button
               key={f.key}
+              title={'title' in f ? f.title : undefined}
+              aria-label={'title' in f ? `${f.title}, ${f.n}` : undefined}
               className={`side-link${filter.kind === f.key && mode !== 'stats' ? ' active' : ''}`}
               onClick={() => { setFilter({ kind: f.key }); setMode('browse'); }}
             >
