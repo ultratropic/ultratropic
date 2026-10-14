@@ -38,10 +38,12 @@ export type Filter =
   | { kind: 'all' }
   | { kind: 'mine' }
   | { kind: 'any' }
+  /** Selected by two or more different people. */
+  | { kind: 'agreed' }
   | { kind: 'dup' }
   | { kind: 'reviewer'; id: string };
 
-/** ?show=mine | all | duplicates | stats, or ?person=<id>. Absent means all photos. */
+/** ?show=mine | all | 2plus | duplicates | stats, or ?person=<id>. Absent means all photos. */
 function viewFromUrl(): { filter: Filter; stats: boolean } {
   const q = new URLSearchParams(location.search);
   const person = q.get('person');
@@ -49,6 +51,7 @@ function viewFromUrl(): { filter: Filter; stats: boolean } {
   switch (q.get('show')) {
     case 'mine': return { filter: { kind: 'mine' }, stats: false };
     case 'all': return { filter: { kind: 'any' }, stats: false };
+    case '2plus': return { filter: { kind: 'agreed' }, stats: false };
     case 'duplicates': return { filter: { kind: 'dup' }, stats: false };
     case 'stats': return { filter: { kind: 'all' }, stats: true };
     default: return { filter: { kind: 'all' }, stats: false };
@@ -60,6 +63,7 @@ function viewToQuery(filter: Filter, stats: boolean): string {
   switch (filter.kind) {
     case 'mine': return '?show=mine';
     case 'any': return '?show=all';
+    case 'agreed': return '?show=2plus';
     case 'dup': return '?show=duplicates';
     case 'reviewer': return `?person=${filter.id}`;
     default: return '';
@@ -339,6 +343,7 @@ export default function Gallery({
     switch (filter.kind) {
       case 'mine': return images.filter((i) => i.mine);
       case 'any': return images.filter((i) => i.selects > 0);
+      case 'agreed': return images.filter((i) => i.selects >= 2);
       case 'dup': return images.filter((i) => i.dup);
       case 'reviewer': {
         const ids = new Set(selectedBy[filter.id] ?? []);
@@ -434,22 +439,26 @@ export default function Gallery({
   const people = reviewers.filter((r) => r.count > 0);
   const mineCount = images.filter((i) => i.mine).length;
   const anyCount = images.filter((i) => i.selects > 0).length;
+  const agreedCount = images.filter((i) => i.selects >= 2).length;
   const dupCount = images.filter((i) => i.dup).length;
 
   // Export follows the current filter: filtered to Alice, you export Alice's.
   const exportWho = filter.kind === 'mine' ? data.me.id : filter.kind === 'reviewer' ? filter.id : 'all';
+  const exportAgreed = filter.kind === 'agreed';
   const exportLabel =
-    exportWho === 'all' ? 'All selects'
+    exportAgreed ? 'Selected by 2+'
+      : exportWho === 'all' ? 'All selects'
       : exportWho === data.me.id ? 'My selects'
         : `${reviewers.find((r) => r.id === exportWho)?.name ?? 'Their'}'s selects`;
-  const exportCount = exportWho === 'all' ? anyCount : (selectedBy[exportWho]?.length ?? 0);
+  const exportCount = exportAgreed ? agreedCount : exportWho === 'all' ? anyCount : (selectedBy[exportWho]?.length ?? 0);
   const exportHref = (format: 'csv' | 'txt') =>
-    `/api/admin/projects/${data.project.id}/export?format=${format}&reviewer=${exportWho}`;
+    `/api/admin/projects/${data.project.id}/export?format=${format}&reviewer=${exportWho}${exportAgreed ? '&min=2' : ''}`;
 
   /** What the download control acts on, as a phrase: "all photos", "Alice's selects". */
   const downloadPhrase =
     filter.kind === 'mine' ? 'my selects'
       : filter.kind === 'any' ? 'all selects'
+        : filter.kind === 'agreed' ? 'photos selected by 2+'
         : filter.kind === 'dup' ? 'possible duplicates'
           : filter.kind === 'reviewer' ? `${reviewers.find((r) => r.id === filter.id)?.name ?? 'their'}'s selects`
             : 'all photos';
@@ -505,6 +514,7 @@ export default function Gallery({
       case 'mine': return personLink(data.me.id);
       case 'reviewer': return personLink(filter.id);
       case 'any': return { url: `${shareBase}?show=all&shared=1`, label: 'all selects' };
+      case 'agreed': return { url: `${shareBase}?show=2plus&shared=1`, label: 'photos selected by 2+' };
       default: return { url: shareBase, label: 'all photos' };
     }
   })();
@@ -519,6 +529,7 @@ export default function Gallery({
       return r ? `${r.name}'s selects` : null;
     }
     if (f.kind === 'any') return 'All selects';
+    if (f.kind === 'agreed') return 'Selected by 2+';
     return null;
   })();
 
@@ -527,6 +538,7 @@ export default function Gallery({
       : mode === 'upload' ? 'Add photos'
         : filter.kind === 'mine' ? 'My selects'
           : filter.kind === 'any' ? 'All selects'
+            : filter.kind === 'agreed' ? 'Selected by 2+'
             : filter.kind === 'dup' ? 'Possible duplicates'
               : filter.kind === 'reviewer' ? (reviewers.find((r) => r.id === filter.id)?.name ?? 'Selects')
                 : 'All photos';
@@ -588,6 +600,7 @@ export default function Gallery({
             { key: 'all', label: 'All photos', n: images.length },
             { key: 'mine', label: 'My selects', n: mineCount },
             { key: 'any', label: 'All selects', n: anyCount },
+            { key: 'agreed', label: 'Selected by 2+', n: agreedCount },
           ] as const).map((f) => (
             <button
               key={f.key}
@@ -822,7 +835,9 @@ export default function Gallery({
         )}
         {mode === 'browse' && filter.kind !== 'all' && visible.length === 0 && (
           <p className="sub" style={{ padding: '24px 0' }}>
-            {filter.kind === 'dup' ? 'No duplicates.' : 'Nothing selected yet.'}
+            {filter.kind === 'dup' ? 'No duplicates.'
+              : filter.kind === 'agreed' ? 'No photo has been selected by two people yet.'
+                : 'Nothing selected yet.'}
           </p>
         )}
         {mode === 'browse' && data.albums.map((album, i) => {

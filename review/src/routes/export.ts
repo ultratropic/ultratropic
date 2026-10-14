@@ -32,16 +32,18 @@ function localTime(ms: number | null): string {
 }
 
 /**
- * GET /projects/:pid/export?format=csv|txt&reviewer=all|<id>&album=<id>
+ * GET /projects/:pid/export?format=csv|txt&reviewer=all|<id>&album=<id>&min=<n>
  *
  * reviewer=all exports the union of all selects; an id exports one
- * person's. Rows follow gallery order: album, then frame.
+ * person's. min=2 keeps only frames at least that many people picked.
+ * Rows follow gallery order: album, then frame.
  */
 exp.get('/projects/:pid/export', async (c) => {
   const projectId = c.req.param('pid');
   const format = c.req.query('format') === 'txt' ? 'txt' : 'csv';
   const reviewerParam = c.req.query('reviewer') ?? 'all';
   const albumParam = c.req.query('album') ?? null;
+  const minPickers = Math.max(1, Number.parseInt(c.req.query('min') ?? '1', 10) || 1);
 
   const project = await c.env.DB.prepare(`SELECT id, name FROM projects WHERE id = ?`)
     .bind(projectId)
@@ -85,13 +87,14 @@ exp.get('/projects/:pid/export', async (c) => {
   const chosen = images.results.filter((img) => {
     if (albumParam && img.album_id !== albumParam) return false;
     const who = pickers.get(img.id);
-    if (!who) return false;
+    if (!who || who.length < minPickers) return false;
     return reviewerParam === 'all' || who.includes(reviewerParam);
   });
 
   const who = reviewerParam === 'all' ? 'all' : slugify(reviewerName.get(reviewerParam)!);
   const where = albumParam ? `-${slugify(albumName.get(albumParam)!)}` : '';
-  const filename = `${slugify(project.name)}-selects-${who}${where}.${format}`;
+  const atLeast = minPickers > 1 ? `-${minPickers}plus` : '';
+  const filename = `${slugify(project.name)}-selects-${who}${atLeast}${where}.${format}`;
 
   let body: string;
   if (format === 'txt') {
