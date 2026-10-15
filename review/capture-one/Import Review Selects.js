@@ -2,9 +2,11 @@
 //
 // Reads the CSV (or plain filename list) exported from review.ultra-tropic.com
 // and brings those picks into the open Capture One session or catalog:
-//   - always: an "All selects" album plus one album per person, in a group
-//     named after the export. Sessions don't let scripts make groups, so there
-//     the albums sit at the top level, prefixed "Review · <export> · ".
+//   - always: albums. An export of all selects gives "Selects · All" plus one
+//     album per person ("Selects · Alex"); any other view (one person, 2+,
+//     Everyone) gives a single album named after it. Importing again numbers
+//     the next set ("Selects 2 · All"). Catalogs get them inside a "Selects"
+//     group instead; sessions don't let scripts make groups.
 //     Nothing that already exists is changed.
 //   - if chosen: star rating = how many people picked the frame (max 5), and/or
 //     a green colour tag on every select. Both overwrite existing values.
@@ -44,7 +46,11 @@ function parseCSV(text) {
   return rows.filter((r) => r.some((c) => c.trim() !== ''));
 }
 
-/** The export as frames: [{ key, filename, pickers: [names] }]. */
+/**
+ * The export: { frames: [{ key, filename, pickers: [names] }], project, view }.
+ * project and view come from the CSV's last columns; older exports and the
+ * plain filename list don't have them.
+ */
 function readExport(path) {
   const ns = $.NSString.stringWithContentsOfFileEncodingError(path, $.NSUTF8StringEncoding, null);
   if (ns.isNil()) throw new Error('Could not read that file as text.');
@@ -53,18 +59,29 @@ function readExport(path) {
   const header = (rows[0] || []).map((h) => h.trim().toLowerCase());
   const col = (name) => header.indexOf(name);
 
+  // Names were written with a leading ' if they started with = + - @ (spreadsheet safety).
+  const unguard = (n) => n.trim().replace(/^'(?=[=+\-@])/, '');
   if (col('filename') >= 0) {
     const f = col('filename'), r = col('raw_match'), s = col('selected_by');
-    return rows.slice(1).map((row) => ({
-      filename: row[f],
-      key: (r >= 0 && row[r] ? row[r] : rawKey(row[f])).toLowerCase(),
-      // Names were written with a leading ' if they started with = + - @ (spreadsheet safety).
-      pickers: s >= 0 && row[s] ? row[s].split(';').map((n) => n.trim().replace(/^'(?=[=+\-@])/, '')).filter(Boolean) : [],
-    }));
+    const body = rows.slice(1);
+    const first = (name) => (col(name) >= 0 && body[0] ? unguard(body[0][col(name)] || '') : '');
+    return {
+      project: first('project'),
+      view: first('view') || 'All',
+      frames: body.map((row) => ({
+        filename: row[f],
+        key: (r >= 0 && row[r] ? row[r] : rawKey(row[f])).toLowerCase(),
+        pickers: s >= 0 && row[s] ? row[s].split(';').map(unguard).filter(Boolean) : [],
+      })),
+    };
   }
   // The plain "Filenames" export: one filename per line, no people.
-  return text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
-    .map((filename) => ({ filename, key: rawKey(filename), pickers: [] }));
+  return {
+    project: '',
+    view: 'All',
+    frames: text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+      .map((filename) => ({ filename, key: rawKey(filename), pickers: [] })),
+  };
 }
 
 /** Every variant in a collection, fetched in bulk (one Apple event per property). */
@@ -86,9 +103,12 @@ function allCollections(parent, out = []) {
   return out;
 }
 
-function uniqueName(existing, base) {
-  if (!existing.includes(base)) return base;
-  for (let n = 2; ; n++) if (!existing.includes(`${base} (${n})`)) return `${base} (${n})`;
+/** "Selects", or "Selects 2", "Selects 3"… — the first that none of `taken` uses. */
+function freePrefix(taken) {
+  for (let n = 1; ; n++) {
+    const prefix = n === 1 ? 'Selects' : `Selects ${n}`;
+    if (!taken(prefix)) return prefix;
+  }
 }
 
 /**
@@ -97,8 +117,7 @@ function uniqueName(existing, base) {
  */
 function importSelects(c1, doc, path, opts) {
   path = String(path);
-  const exportName = stripExt(path.split('/').pop());
-  const frames = readExport(path);
+  const { frames, view } = readExport(path);
   if (!frames.length) return ['That file has no selects in it.'];
 
   // Find the frames: what's on screen first, then the rest of the document.
@@ -131,33 +150,37 @@ function importSelects(c1, doc, path, opts) {
       `First few: ${frames.slice(0, 5).map((f) => f.filename).join(', ')}`];
   }
 
-  // Albums, grouped under the export's name so repeated imports stay tidy.
-  const base = `Review · ${exportName}`;
-  let groupName = '';
+  // Albums. All selects: one album for everything plus one per person. Any
+  // narrower view (a person, 2+, Everyone) is already one set: one album.
+  const albums = [[view, matched]];
+  if (view === 'All') {
+    const people = [...new Set(matched.flatMap((f) => f.pickers))];
+    for (const person of people) albums.push([person, matched.filter((f) => f.pickers.includes(person))]);
+  }
+  let prefix = '';
+  let inGroup = false;
   if (opts.albums) {
+    const existing = doc.collections.name();
     // Catalogs take a group; sessions refuse to let scripts create one
     // ("An error occurred while trying to make this collection"), so there
     // the albums go at the top level under a shared prefix instead.
     let group = null;
     try {
-      const name = uniqueName(doc.collections.name(), base);
-      doc.collections.push(c1.Collection({ kind: 'group', name }));
-      group = doc.collections.byName(name);
-      groupName = name;
-    } catch (e) { group = null; }
-
-    const albums = [['All selects', matched]];
-    const people = [...new Set(matched.flatMap((f) => f.pickers))];
-    for (const person of people) albums.push([person, matched.filter((f) => f.pickers.includes(person))]);
+      prefix = freePrefix((p) => existing.includes(p));
+      doc.collections.push(c1.Collection({ kind: 'group', name: prefix }));
+      group = doc.collections.byName(prefix);
+      inGroup = true;
+    } catch (e) {
+      prefix = freePrefix((p) => existing.some((n) => n.startsWith(`${p} · `)));
+    }
     for (const [name, list] of albums) {
       let album;
       if (group) {
         group.collections.push(c1.Collection({ kind: 'album', name }));
         album = group.collections.byName(name);
       } else {
-        const full = uniqueName(doc.collections.name(), `${base} · ${name}`);
-        doc.collections.push(c1.Collection({ kind: 'album', name: full }));
-        album = doc.collections.byName(full);
+        doc.collections.push(c1.Collection({ kind: 'album', name: `${prefix} · ${name}` }));
+        album = doc.collections.byName(`${prefix} · ${name}`);
       }
       c1.addInside(album, { variants: list.map((f) => byKey.get(f.key).ref) });
     }
@@ -171,9 +194,8 @@ function importSelects(c1, doc, path, opts) {
 
   const lines = [`Matched ${matched.length} of ${frames.length} selects in “${doc.name()}”.`];
   if (opts.albums) {
-    lines.push(groupName
-      ? `Albums are in the “${groupName}” group.`
-      : `Albums start with “${base} · ” (All selects, then one per person).`);
+    const names = albums.map(([name]) => (inGroup ? name : `${prefix} · ${name}`));
+    lines.push(inGroup ? `Albums, in the “${prefix}” group:` : 'Albums:', ...names.map((n) => `  ${n}`));
   }
   if (opts.rating) lines.push('Star ratings set to the number of people who picked each frame.');
   if (opts.green) lines.push('Green tags applied.');
@@ -218,26 +240,45 @@ function run(argv) {
     path = sys.chooseFile({ withPrompt: 'Choose the selects exported from Review (CSV or Filenames)' }).toString();
   } catch (e) { return; } // cancelled
 
-  let frames;
-  try { frames = readExport(path); } catch (e) { say(e.message); return; }
+  let frames, project, view;
+  try { ({ frames, project, view } = readExport(path)); } catch (e) { say(e.message); return; }
   if (!frames.length) { say('That file has no selects in it.'); return; }
 
-  const OPT_ALBUMS = 'Albums: All selects + one per person  (safe, changes nothing)';
+  // One question for the usual case; ratings and tags stay behind Options….
+  const what = project ? `${project} · ${view}` : stripExt(path.split('/').pop());
+  let first;
+  try {
+    first = say(
+      `Import ${frames.length} ${frames.length === 1 ? 'select' : 'selects'} (${what}) into “${doc.name()}”?\n\n` +
+      'This adds albums. It doesn\'t change any photos.',
+      ['Cancel', 'Options…', 'Import'],
+    ).buttonReturned;
+  } catch (e) { return; } // Cancel
+  if (first === 'Import') {
+    try { say(importSelects(c1, doc, path, { albums: true, rating: false, green: false }).join('\n')); }
+    catch (e) { say(`Something went wrong: ${e.message}`); }
+    return;
+  }
+
+  const OPT_ALBUMS = 'Albums  (safe, changes no photos)';
   const OPT_RATING = 'Star rating = number of people who picked it  (overwrites ratings)';
   const OPT_GREEN = 'Green colour tag on every select  (overwrites tags)';
   const hasPeople = frames.some((f) => f.pickers.length);
   const picked = sys.chooseFromList(hasPeople ? [OPT_ALBUMS, OPT_RATING, OPT_GREEN] : [OPT_ALBUMS, OPT_GREEN], {
     withTitle: 'Import Review Selects',
-    withPrompt: `${frames.length} selects in “${stripExt(path.split('/').pop())}”. What should this do?\n(⌘-click to choose more than one)`,
+    withPrompt: `${frames.length} selects (${what}). What should this do?\n(⌘-click to choose more than one)`,
     defaultItems: [OPT_ALBUMS],
     multipleSelectionsAllowed: true,
   });
   if (!picked) return;
   const opts = { albums: picked.includes(OPT_ALBUMS), rating: picked.includes(OPT_RATING), green: picked.includes(OPT_GREEN) };
-  if ((opts.rating || opts.green) && say(
-    `This will ${[opts.rating && 'set star ratings', opts.green && 'set colour tags'].filter(Boolean).join(' and ')} ` +
-    'on the matched frames, replacing whatever they have now. Continue?', ['Cancel', 'Continue'],
-  ).buttonReturned !== 'Continue') return;
+  if (!opts.albums && !opts.rating && !opts.green) return;
+  if (opts.rating || opts.green) {
+    try {
+      say(`This will ${[opts.rating && 'set star ratings', opts.green && 'set colour tags'].filter(Boolean).join(' and ')} ` +
+        'on the matched frames, replacing whatever they have now. Continue?', ['Cancel', 'Continue']);
+    } catch (e) { return; } // Cancel
+  }
 
   try {
     say(importSelects(c1, doc, path, opts).join('\n'));

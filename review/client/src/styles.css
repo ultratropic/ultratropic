@@ -203,6 +203,15 @@ button.ghost.danger:hover { border-color: #c0392b; }
 }
 .export-row a:hover { border-color: var(--fg); }
 .export-row a[aria-disabled='true'] { opacity: 0.35; pointer-events: none; }
+.export-row { margin-bottom: 6px; }
+.export-more { margin: 0 0 18px; }
+.export-more a { color: var(--muted); }
+.export-more a:hover { color: var(--fg); }
+.export-more a[aria-disabled='true'] { opacity: 0.35; pointer-events: none; }
+.c1-help { margin: -8px 0 18px; line-height: 1.5; }
+.c1-help p { margin: 0 0 4px; }
+.c1-help ol { margin: 0 0 8px; padding-left: 18px; }
+.c1-help a { color: var(--fg); }
 
 /* ---- stats ---- */
 .stats-title { font-size: 15px; font-weight: 500; margin: 8px 0 12px; }

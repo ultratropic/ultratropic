@@ -117,7 +117,15 @@ exp.get('/projects/:pid/export', async (c) => {
       (byRaw.get(key) ?? byRaw.set(key, []).get(key)!).push(img.original_filename);
     }
 
-    const lines = ['filename,raw_match,album,select_count,selected_by,capture_time,note'];
+    // project and view (which selection this is: "All", "2+", "Everyone", or a
+    // person) let the Capture One script name its albums without guessing from
+    // the file name. They go last so older readers of the first columns still work.
+    const view = everyoneOnly ? 'Everyone'
+      : minPickers > 1 ? `${minPickers}+`
+        : reviewerParam === 'all' ? 'All'
+          : safeName(reviewerName.get(reviewerParam)!);
+    const viewWithAlbum = albumParam ? `${view} (${albumName.get(albumParam)})` : view;
+    const lines = ['filename,raw_match,album,select_count,selected_by,capture_time,note,project,view'];
     for (const img of chosen) {
       const raw = rawMatch(img.original_filename);
       const siblings = (byRaw.get(raw.toLowerCase()) ?? []).filter((f) => f !== img.original_filename);
@@ -131,6 +139,8 @@ exp.get('/projects/:pid/export', async (c) => {
           csvField(names.join('; ')),
           localTime(img.capture_time),
           siblings.length ? csvField(`same RAW as ${siblings.join(', ')}`) : '',
+          csvField(project.name),
+          csvField(viewWithAlbum),
         ].join(','),
       );
     }

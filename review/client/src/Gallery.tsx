@@ -142,6 +142,7 @@ export default function Gallery({
   const dlAbort = useRef<AbortController | null>(null);
   /** Phones: the sidebar lives behind this full-screen menu. */
   const [menuOpen, setMenuOpen] = useState(false);
+  const [c1Help, setC1Help] = useState(false);
   const sectionRefs = useRef<Array<HTMLElement | null>>([]);
   const sideRef = useRef<HTMLElement | null>(null);
   const imagesRef = useRef<GalleryImg[]>([]);
@@ -671,12 +672,36 @@ export default function Gallery({
 
         {admin && images.length > 0 && (
           <>
-            <label>Export {exportLabel} ({exportCount})</label>
+            <label>Capture One · {exportLabel} ({exportCount})</label>
             <div className="export-row">
-              <a href={exportHref('csv')} download aria-disabled={exportCount === 0}>CSV</a>
-              <a href={exportHref('txt')} download aria-disabled={exportCount === 0}>Filenames</a>
+              <a href={exportHref('csv')} download aria-disabled={exportCount === 0}
+                title="Downloads a file for Scripts → Import Review Selects in Capture One">
+                Send to Capture One
+              </a>
             </div>
-            {/* Capture One script link: held back until the script is tested against a real session. */}
+            <p className="meta export-more">
+              <a href={exportHref('txt')} download aria-disabled={exportCount === 0}>Filenames only</a>
+              {' · '}
+              <button className="text-btn" aria-expanded={c1Help} onClick={() => setC1Help((v) => !v)}>
+                {c1Help ? 'Hide script setup' : 'Get the script'}
+              </button>
+            </p>
+            {c1Help && (
+              <div className="meta c1-help">
+                <p>Once per computer:</p>
+                <ol>
+                  <li>
+                    <a href="/capture-one/import-review-selects.scpt" download="Import Review Selects.scpt">
+                      Download the script
+                    </a>
+                  </li>
+                  <li>In Capture One, choose Scripts → Open Scripts Folder and drag it in</li>
+                  <li>Choose Scripts → Update Scripts Menu</li>
+                </ol>
+                <p>Then each time: Send to Capture One here, and in Capture One choose
+                  Scripts → Import Review Selects and pick the file you just downloaded.</p>
+              </div>
+            )}
           </>
         )}
 
