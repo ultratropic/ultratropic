@@ -3,6 +3,7 @@ import { api, ApiError } from './api';
 import Grid, { type Img } from './Grid';
 import Viewer from './Viewer';
 import Uploader from './Uploader';
+import { selectedByEveryone, ACTIVE_SHARE, MIN_ACTIVE } from '../../shared/everyone';
 import SharePanel, { type ShareState } from './SharePanel';
 import Stats from './Stats';
 import CopyLink from './CopyLink';
@@ -40,10 +41,12 @@ export type Filter =
   | { kind: 'any' }
   /** Selected by two or more different people. */
   | { kind: 'agreed' }
+  /** Selected by every active reviewer (see shared/everyone.ts). */
+  | { kind: 'everyone' }
   | { kind: 'dup' }
   | { kind: 'reviewer'; id: string };
 
-/** ?show=mine | all | 2plus | duplicates | stats, or ?person=<id>. Absent means all photos. */
+/** ?show=mine | all | 2plus | everyone | duplicates | stats, or ?person=<id>. Absent means all photos. */
 function viewFromUrl(): { filter: Filter; stats: boolean } {
   const q = new URLSearchParams(location.search);
   const person = q.get('person');
@@ -52,6 +55,7 @@ function viewFromUrl(): { filter: Filter; stats: boolean } {
     case 'mine': return { filter: { kind: 'mine' }, stats: false };
     case 'all': return { filter: { kind: 'any' }, stats: false };
     case '2plus': return { filter: { kind: 'agreed' }, stats: false };
+    case 'everyone': return { filter: { kind: 'everyone' }, stats: false };
     case 'duplicates': return { filter: { kind: 'dup' }, stats: false };
     case 'stats': return { filter: { kind: 'all' }, stats: true };
     default: return { filter: { kind: 'all' }, stats: false };
@@ -64,6 +68,7 @@ function viewToQuery(filter: Filter, stats: boolean): string {
     case 'mine': return '?show=mine';
     case 'any': return '?show=all';
     case 'agreed': return '?show=2plus';
+    case 'everyone': return '?show=everyone';
     case 'dup': return '?show=duplicates';
     case 'reviewer': return `?person=${filter.id}`;
     default: return '';
@@ -73,6 +78,8 @@ function viewToQuery(filter: Filter, stats: boolean): string {
 /** Selected by two or more people. U+FE0E keeps the heart a text glyph, not a red emoji, on iOS. */
 const AGREED = '2\u2665\uFE0E+';
 const AGREED_WORDS = 'Selected by 2 or more people';
+const EVERYONE_WORDS =
+  `Selected by everyone — counting only people who've selected at least ${ACTIVE_SHARE * 100}% of the photos`;
 
 const scrollKey = () => `review-scroll:${location.pathname}${location.search}`;
 
@@ -343,11 +350,14 @@ export default function Gallery({
     void loadGallery();
   }, [loadGallery]);
 
+  const everyone = useMemo(() => selectedByEveryone(selectedBy, images.length), [selectedBy, images.length]);
+
   const visible = useMemo(() => {
     switch (filter.kind) {
       case 'mine': return images.filter((i) => i.mine);
       case 'any': return images.filter((i) => i.selects > 0);
       case 'agreed': return images.filter((i) => i.selects >= 2);
+      case 'everyone': return images.filter((i) => everyone.ids.has(i.id));
       case 'dup': return images.filter((i) => i.dup);
       case 'reviewer': {
         const ids = new Set(selectedBy[filter.id] ?? []);
@@ -355,7 +365,7 @@ export default function Gallery({
       }
       default: return images;
     }
-  }, [images, filter, selectedBy]);
+  }, [images, filter, selectedBy, everyone]);
 
   const byAlbum = useMemo(() => {
     const groups = new Map<number, GalleryImg[]>();
@@ -444,25 +454,29 @@ export default function Gallery({
   const mineCount = images.filter((i) => i.mine).length;
   const anyCount = images.filter((i) => i.selects > 0).length;
   const agreedCount = images.filter((i) => i.selects >= 2).length;
+  const everyoneCount = everyone.ids.size;
   const dupCount = images.filter((i) => i.dup).length;
 
   // Export follows the current filter: filtered to Alice, you export Alice's.
   const exportWho = filter.kind === 'mine' ? data.me.id : filter.kind === 'reviewer' ? filter.id : 'all';
   const exportAgreed = filter.kind === 'agreed';
+  const exportEveryone = filter.kind === 'everyone';
   const exportLabel =
     exportAgreed ? AGREED
+      : exportEveryone ? 'Everyone'
       : exportWho === 'all' ? 'All selects'
       : exportWho === data.me.id ? 'My selects'
         : `${reviewers.find((r) => r.id === exportWho)?.name ?? 'Their'}'s selects`;
-  const exportCount = exportAgreed ? agreedCount : exportWho === 'all' ? anyCount : (selectedBy[exportWho]?.length ?? 0);
+  const exportCount = exportAgreed ? agreedCount : exportEveryone ? everyoneCount : exportWho === 'all' ? anyCount : (selectedBy[exportWho]?.length ?? 0);
   const exportHref = (format: 'csv' | 'txt') =>
-    `/api/admin/projects/${data.project.id}/export?format=${format}&reviewer=${exportWho}${exportAgreed ? '&min=2' : ''}`;
+    `/api/admin/projects/${data.project.id}/export?format=${format}&reviewer=${exportWho}${exportAgreed ? '&min=2' : ''}${exportEveryone ? '&everyone=1' : ''}`;
 
   /** What the download control acts on, as a phrase: "all photos", "Alice's selects". */
   const downloadPhrase =
     filter.kind === 'mine' ? 'my selects'
       : filter.kind === 'any' ? 'all selects'
         : filter.kind === 'agreed' ? AGREED
+        : filter.kind === 'everyone' ? "everyone's selects"
         : filter.kind === 'dup' ? 'possible duplicates'
           : filter.kind === 'reviewer' ? `${reviewers.find((r) => r.id === filter.id)?.name ?? 'their'}'s selects`
             : 'all photos';
@@ -519,6 +533,7 @@ export default function Gallery({
       case 'reviewer': return personLink(filter.id);
       case 'any': return { url: `${shareBase}?show=all&shared=1`, label: 'all selects' };
       case 'agreed': return { url: `${shareBase}?show=2plus&shared=1`, label: AGREED };
+      case 'everyone': return { url: `${shareBase}?show=everyone&shared=1`, label: "everyone's selects" };
       default: return { url: shareBase, label: 'all photos' };
     }
   })();
@@ -534,6 +549,7 @@ export default function Gallery({
     }
     if (f.kind === 'any') return 'All selects';
     if (f.kind === 'agreed') return AGREED;
+    if (f.kind === 'everyone') return 'Everyone';
     return null;
   })();
 
@@ -543,6 +559,7 @@ export default function Gallery({
         : filter.kind === 'mine' ? 'My selects'
           : filter.kind === 'any' ? 'All selects'
             : filter.kind === 'agreed' ? AGREED
+            : filter.kind === 'everyone' ? 'Everyone'
             : filter.kind === 'dup' ? 'Possible duplicates'
               : filter.kind === 'reviewer' ? (reviewers.find((r) => r.id === filter.id)?.name ?? 'Selects')
                 : 'All photos';
@@ -605,6 +622,7 @@ export default function Gallery({
             { key: 'mine', label: 'My selects', n: mineCount },
             { key: 'any', label: 'All selects', n: anyCount },
             { key: 'agreed', label: AGREED, n: agreedCount, title: AGREED_WORDS },
+            { key: 'everyone', label: 'Everyone', n: everyoneCount, title: EVERYONE_WORDS },
           ] as const).map((f) => (
             <button
               key={f.key}
@@ -843,6 +861,10 @@ export default function Gallery({
           <p className="sub" style={{ padding: '24px 0' }}>
             {filter.kind === 'dup' ? 'No duplicates.'
               : filter.kind === 'agreed' ? 'No photo has been selected by two people yet.'
+              : filter.kind === 'everyone'
+                ? everyone.active.length < MIN_ACTIVE
+                  ? `Needs at least ${MIN_ACTIVE} people who've each selected ${ACTIVE_SHARE * 100}% or more of the photos.`
+                  : `No photo has been selected by all ${everyone.active.length} active reviewers yet.`
                 : 'Nothing selected yet.'}
           </p>
         )}

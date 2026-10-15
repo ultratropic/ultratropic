@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { readAdmin } from '../lib/auth';
 import { slugify } from '../lib/ids';
 import { rawMatch } from '../../shared/names';
+import { selectedByEveryone } from '../../shared/everyone';
 import type { Env, Vars } from '../types';
 
 const exp = new Hono<{ Bindings: Env; Variables: Vars }>();
@@ -35,7 +36,8 @@ function localTime(ms: number | null): string {
  * GET /projects/:pid/export?format=csv|txt&reviewer=all|<id>&album=<id>&min=<n>
  *
  * reviewer=all exports the union of all selects; an id exports one
- * person's. min=2 keeps only frames at least that many people picked.
+ * person's. min=2 keeps only frames at least that many people picked;
+ * everyone=1 keeps frames every active reviewer picked (shared/everyone.ts).
  * Rows follow gallery order: album, then frame.
  */
 exp.get('/projects/:pid/export', async (c) => {
@@ -44,6 +46,7 @@ exp.get('/projects/:pid/export', async (c) => {
   const reviewerParam = c.req.query('reviewer') ?? 'all';
   const albumParam = c.req.query('album') ?? null;
   const minPickers = Math.max(1, Number.parseInt(c.req.query('min') ?? '1', 10) || 1);
+  const everyoneOnly = c.req.query('everyone') === '1';
 
   const project = await c.env.DB.prepare(`SELECT id, name FROM projects WHERE id = ?`)
     .bind(projectId)
@@ -84,8 +87,13 @@ exp.get('/projects/:pid/export', async (c) => {
     (pickers.get(s.image_id) ?? pickers.set(s.image_id, []).get(s.image_id)!).push(s.reviewer_id);
   }
 
+  const picksByReviewer: Record<string, string[]> = {};
+  for (const s of selections.results) (picksByReviewer[s.reviewer_id] ??= []).push(s.image_id);
+  const everyone = everyoneOnly ? selectedByEveryone(picksByReviewer, images.results.length).ids : null;
+
   const chosen = images.results.filter((img) => {
     if (albumParam && img.album_id !== albumParam) return false;
+    if (everyone && !everyone.has(img.id)) return false;
     const who = pickers.get(img.id);
     if (!who || who.length < minPickers) return false;
     return reviewerParam === 'all' || who.includes(reviewerParam);
@@ -93,7 +101,7 @@ exp.get('/projects/:pid/export', async (c) => {
 
   const who = reviewerParam === 'all' ? 'all' : slugify(reviewerName.get(reviewerParam)!);
   const where = albumParam ? `-${slugify(albumName.get(albumParam)!)}` : '';
-  const atLeast = minPickers > 1 ? `-${minPickers}plus` : '';
+  const atLeast = everyoneOnly ? '-everyone' : minPickers > 1 ? `-${minPickers}plus` : '';
   const filename = `${slugify(project.name)}-selects-${who}${atLeast}${where}.${format}`;
 
   let body: string;
