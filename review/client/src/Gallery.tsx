@@ -76,7 +76,7 @@ function viewToQuery(filter: Filter, stats: boolean): string {
 }
 
 /** Selected by two or more people. U+FE0E keeps the heart a text glyph, not a red emoji, on iOS. */
-const AGREED = '2\u2665\uFE0E+';
+const AGREED = '\u2665\uFE0E\u2665\uFE0E+';
 const AGREED_WORDS = 'Selected by 2 or more people';
 const EVERYONE_WORDS =
   `Selected by everyone — counting only people who've selected at least ${ACTIVE_SHARE * 100}% of the photos`;
