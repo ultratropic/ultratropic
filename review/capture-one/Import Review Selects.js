@@ -2,8 +2,10 @@
 //
 // Reads the CSV (or plain filename list) exported from review.ultra-tropic.com
 // and brings those picks into the open Capture One session or catalog:
-//   - always: an album group named after the export, with "All selects" plus
-//     one album per person. Nothing that already exists is changed.
+//   - always: an "All selects" album plus one album per person, in a group
+//     named after the export. Sessions don't let scripts make groups, so there
+//     the albums sit at the top level, prefixed "Review · <export> · ".
+//     Nothing that already exists is changed.
 //   - if chosen: star rating = how many people picked the frame (max 5), and/or
 //     a green colour tag on every select. Both overwrite existing values.
 //
@@ -112,7 +114,9 @@ function importSelects(c1, doc, path, opts) {
     // Prefer the RAW over a JPEG (or other rendered file) of the same frame.
     if (!current || (JPEG_EXT.test(current.name) && !JPEG_EXT.test(v.name))) byKey.set(key, v);
   };
-  variantsIn(doc.currentCollection()).forEach(consider);
+  // currentCollection() is null when nothing is selected in the Library tool.
+  const current = (() => { try { return doc.currentCollection(); } catch (e) { return null; } })();
+  if (current) variantsIn(current).forEach(consider);
   if ([...wanted].some((k) => !byKey.has(k))) {
     for (const c of allCollections(doc)) {
       try { variantsIn(c).forEach(consider); } catch (e) { /* unreadable built-in collection */ }
@@ -128,18 +132,34 @@ function importSelects(c1, doc, path, opts) {
   }
 
   // Albums, grouped under the export's name so repeated imports stay tidy.
+  const base = `Review · ${exportName}`;
   let groupName = '';
   if (opts.albums) {
-    groupName = uniqueName(doc.collections.name(), `Review · ${exportName}`);
-    doc.collections.push(c1.Collection({ kind: 'group', name: groupName }));
-    const g = doc.collections.byName(groupName);
+    // Catalogs take a group; sessions refuse to let scripts create one
+    // ("An error occurred while trying to make this collection"), so there
+    // the albums go at the top level under a shared prefix instead.
+    let group = null;
+    try {
+      const name = uniqueName(doc.collections.name(), base);
+      doc.collections.push(c1.Collection({ kind: 'group', name }));
+      group = doc.collections.byName(name);
+      groupName = name;
+    } catch (e) { group = null; }
 
     const albums = [['All selects', matched]];
     const people = [...new Set(matched.flatMap((f) => f.pickers))];
     for (const person of people) albums.push([person, matched.filter((f) => f.pickers.includes(person))]);
     for (const [name, list] of albums) {
-      g.collections.push(c1.Collection({ kind: 'album', name }));
-      c1.addInside(g.collections.byName(name), { variants: list.map((f) => byKey.get(f.key).ref) });
+      let album;
+      if (group) {
+        group.collections.push(c1.Collection({ kind: 'album', name }));
+        album = group.collections.byName(name);
+      } else {
+        const full = uniqueName(doc.collections.name(), `${base} · ${name}`);
+        doc.collections.push(c1.Collection({ kind: 'album', name: full }));
+        album = doc.collections.byName(full);
+      }
+      c1.addInside(album, { variants: list.map((f) => byKey.get(f.key).ref) });
     }
   }
 
@@ -150,7 +170,11 @@ function importSelects(c1, doc, path, opts) {
   }
 
   const lines = [`Matched ${matched.length} of ${frames.length} selects in “${doc.name()}”.`];
-  if (opts.albums) lines.push(`Albums are in the “${groupName}” group.`);
+  if (opts.albums) {
+    lines.push(groupName
+      ? `Albums are in the “${groupName}” group.`
+      : `Albums start with “${base} · ” (All selects, then one per person).`);
+  }
   if (opts.rating) lines.push('Star ratings set to the number of people who picked each frame.');
   if (opts.green) lines.push('Green tags applied.');
   if (missing.length) {
