@@ -94,6 +94,7 @@ function uniqueName(existing, base) {
  * opts: { albums, rating, green }
  */
 function importSelects(c1, doc, path, opts) {
+  path = String(path);
   const exportName = stripExt(path.split('/').pop());
   const frames = readExport(path);
   if (!frames.length) return ['That file has no selects in it.'];
@@ -166,7 +167,9 @@ function importSelects(c1, doc, path, opts) {
  */
 function run(argv) {
   const c1 = Application(APP_NAME);
-  const headless = argv && argv.length > 0;
+  // Capture One's Scripts menu passes run() an argument of its own, which isn't a
+  // path; only a string naming a file means "from a terminal, no dialogs".
+  const headless = Array.isArray(argv) && typeof argv[0] === 'string' && /\.(csv|txt)$/i.test(argv[0]);
 
   if (headless) {
     if (!c1.running() || c1.documents.length === 0) return 'No session or catalog is open in Capture One.';
