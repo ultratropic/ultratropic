@@ -142,6 +142,8 @@ export default function Viewer({
     horizontal: boolean | null; panFrom: { x: number; y: number } | null; panned: boolean;
   } | null>(null);
   const lastTap = useRef<{ t: number; x: number; y: number } | null>(null);
+  /** Where the pin was before the last tap moved it, so a double-tap can put it back. */
+  const pinBeforeTap = useRef<Pin | null>(null);
   // When a gesture ended: the click the browser fires right after it isn't a
   // real click. Time-boxed, because some gestures (a touch swipe, a pinch) fire
   // no click at all, and the next genuine one must not be swallowed.
@@ -167,9 +169,15 @@ export default function Viewer({
 
   // ---- notes ----
   const [notesOpen, setNotesOpen] = useState(() => {
-    // Open by default; closing it is remembered for the rest of the visit.
+    // Open by default beside the photo; on a phone it would take half the
+    // screen (and hide who picked the photo), so there it starts closed. Either
+    // way, opening or closing it is remembered for the rest of the visit.
     if (!notesApi) return false;
-    try { return sessionStorage.getItem(NOTES_KEY) !== '0'; } catch { return true; }
+    const wide = window.matchMedia('(min-width: 761px)').matches;
+    try {
+      const saved = sessionStorage.getItem(NOTES_KEY);
+      return saved === null ? wide : saved === '1';
+    } catch { return wide; }
   });
   // Notes are kept with the photo they belong to, so a late answer for one
   // photo can never show up on the next.
@@ -344,6 +352,18 @@ export default function Viewer({
         .catch((err) => {
           // The photo itself is gone (deleted meanwhile): nowhere left to save to.
           if (err instanceof ApiError && err.status === 404) return;
+          // The note being replied to was deleted meanwhile: keep the words as a general note.
+          if (part === 'reply' && err instanceof ApiError && err.status === 400 && /parent/i.test(err.message)) {
+            api.add(imageId, { body: (input as NoteInput).body }, { keepalive })
+              .then((list) => applyRef.current(imageId, list))
+              .catch(() => {
+                const back = loadWork(workScope, imageId);
+                const merged = { ...back, general: [back.general, (input as NoteInput).body].filter(Boolean).join('\n') };
+                storeWork(workScope, imageId, merged);
+                setHeld((h) => (h.imageId === imageId ? { imageId, work: merged } : h));
+              });
+            return;
+          }
           const back = loadWork(workScope, imageId);
           // Only into an empty slot: never over something typed since.
           const restored = noteFrom(back, part) || (part === 'pin' && back.pin) ? back
@@ -357,10 +377,18 @@ export default function Viewer({
   }, [workScope]);
 
   // Leaving a photo (next, previous, close, back gesture) saves its unfinished work.
+  // A bare pin — no words, no marks — is a stray click rather than work: it goes.
   useEffect(() => {
     const imageId = img?.id;
-    return () => { if (imageId) saveWork(imageId, workOf(imageId)); };
-  }, [img?.id, saveWork]);
+    return () => {
+      if (!imageId) return;
+      const w = workOf(imageId);
+      saveWork(imageId, w);
+      if (w.pin && !w.text.trim() && !w.pin.shapes?.length) {
+        storeWork(workScope, imageId, { ...loadWork(workScope, imageId), pin: null });
+      }
+    };
+  }, [img?.id, saveWork]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // So does closing or reloading the tab: keepalive lets the request outlive the page.
   useEffect(() => {
@@ -379,7 +407,14 @@ export default function Viewer({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (isTyping(e.target)) return; // typing a note: arrows and Escape belong to the text box
+      // Typing a note: keys belong to the box. But an empty box has nothing to
+      // move the cursor through, so the arrows still change photo from there.
+      if (isTyping(e.target)) {
+        const box = e.target as HTMLTextAreaElement;
+        const empty = 'value' in box && !box.value;
+        if (!(empty && (e.key === 'ArrowRight' || e.key === 'ArrowLeft'))) return;
+        box.blur();
+      }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && draft?.shapes?.length) {
         e.preventDefault();
         undoMark();
@@ -615,9 +650,22 @@ export default function Viewer({
 
     // With notes open, a tap on the photo pins a note there (and nothing else:
     // no double-tap select, no closing).
+    const now = performance.now();
+    const prev = lastTap.current;
+    const isDouble = !!prev && now - prev.t < DOUBLE_TAP_MS && Math.hypot(e.clientX - prev.x, e.clientY - prev.y) < 40;
+
     if (notesOpen && notesApi) {
       suppressClick.current = performance.now();
+      if (isDouble) {
+        // A double-tap still selects: take back the pin the first tap dropped.
+        lastTap.current = null;
+        setDraft(pinBeforeTap.current);
+        toggleWithPulse();
+        return;
+      }
+      lastTap.current = { t: now, x: e.clientX, y: e.clientY };
       const p = pointOnPhoto(e.clientX, e.clientY);
+      pinBeforeTap.current = draft;
       if (p && !draft?.shapes?.length) {
         setDraft(p); // a new spot for the pin; any words typed for it stay
         setActiveNote(null);
@@ -625,9 +673,7 @@ export default function Viewer({
       return;
     }
 
-    const now = performance.now();
-    const prev = lastTap.current;
-    if (prev && now - prev.t < DOUBLE_TAP_MS && Math.hypot(e.clientX - prev.x, e.clientY - prev.y) < 40) {
+    if (isDouble) {
       lastTap.current = null;
       suppressClick.current = performance.now();
       toggleWithPulse();
@@ -816,7 +862,12 @@ export default function Viewer({
               if (inFlight.current.has(key)) return;
               inFlight.current.add(key);
               try {
-                apply(imageId, await notesApi.add(imageId, input));
+                apply(imageId, await notesApi.add(imageId, input).catch((err) => {
+                  if (part === 'reply' && err instanceof ApiError && err.status === 400 && /parent/i.test(err.message)) {
+                    throw new Error('That note was just deleted. Your words are kept, and leaving this photo saves them as a general note');
+                  }
+                  throw err;
+                }));
                 // Saved: clear it from wherever it now lives (on screen, or kept for that photo).
                 if (heldRef.current.imageId === imageId) setHeld((h) => (h.imageId === imageId ? { imageId, work: strip(h.work, part) } : h));
                 else storeWork(workScope, imageId, strip(loadWork(workScope, imageId), part));

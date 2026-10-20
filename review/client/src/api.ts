@@ -12,7 +12,10 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new ApiError(text || `${res.status}`, res.status);
+    // The server answers {"error": "..."}: show the words, not the JSON.
+    let message = text;
+    try { message = (JSON.parse(text) as { error?: string }).error ?? text; } catch { /* not JSON */ }
+    throw new ApiError(message || `${res.status}`, res.status);
   }
   return res.json() as Promise<T>;
 }
