@@ -420,6 +420,38 @@ export default function Gallery({
     return byFilter.filter((i) => talentName(i).toLowerCase().includes(q));
   }, [byFilter, casting, query]);
 
+  // ---- casting: one tile per model ----
+  /** Which model a photo is of, within its album (the same name on two boards stays two tiles). */
+  const personKey = (img: GalleryImg) => `${img.album}:${talentName(img).trim().toLowerCase()}`;
+  /** Every photo of each model, whatever the filter: opening a model shows them all. */
+  const peopleByKey = useMemo(() => {
+    if (!casting) return null;
+    const m = new Map<string, GalleryImg[]>();
+    for (const img of images) {
+      const k = personKey(img);
+      (m.get(k) ?? m.set(k, []).get(k)!).push(img);
+    }
+    return m;
+  }, [casting, images]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * What full screen steps through. A shoot: the photos on screen. A casting:
+   * each model on screen with all of their photos together, so the arrows go
+   * through one model's photos and then on to the next model.
+   */
+  const viewerList = useMemo(() => {
+    if (!peopleByKey) return visible;
+    const seen = new Set<string>();
+    const out: GalleryImg[] = [];
+    for (const img of visible) {
+      const k = personKey(img);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(...peopleByKey.get(k)!);
+    }
+    return out;
+  }, [visible, peopleByKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const byAlbum = useMemo(() => {
     const groups = new Map<number, GalleryImg[]>();
     for (const img of visible) {
@@ -441,28 +473,75 @@ export default function Gallery({
 
   const albumTotals = useMemo(() => {
     const m = new Map<number, { n: number; mine: number }>();
+    // A casting counts people (a model with three photos is one), a shoot counts photos.
+    const seen = new Map<string, boolean>();
     for (const img of images) {
       const t = m.get(img.album) ?? { n: 0, mine: 0 };
-      t.n++;
-      if (img.mine) t.mine++;
+      if (casting) {
+        const k = `${img.album}:${talentName(img).trim().toLowerCase()}`;
+        const had = seen.get(k);
+        if (had === undefined) { t.n++; if (img.mine) t.mine++; }
+        else if (!had && img.mine) t.mine++;
+        seen.set(k, !!had || !!img.mine);
+      } else {
+        t.n++;
+        if (img.mine) t.mine++;
+      }
       m.set(img.album, t);
     }
     return m;
-  }, [images]);
+  }, [images, casting]);
 
   const indexOf = useMemo(() => {
     const m = new Map<string, number>();
-    visible.forEach((img, i) => m.set(img.id, i));
+    viewerList.forEach((img, i) => m.set(img.id, i));
     return m;
-  }, [visible]);
+  }, [viewerList]);
+
+  /**
+   * A casting album's tiles: one per model, showing their first photo, with
+   * hearts and notes summed across all their photos.
+   */
+  const tilesFor = (list: GalleryImg[]): GalleryImg[] => {
+    if (!peopleByKey) return list;
+    const seen = new Set<string>();
+    const tiles: GalleryImg[] = [];
+    for (const img of list) {
+      const k = personKey(img);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      const members = peopleByKey.get(k)!;
+      if (members.length === 1) { tiles.push(img); continue; }
+      const pickers = new Set(members.flatMap((m) => pickersByImage.get(m.id) ?? []));
+      tiles.push({
+        ...members[0]!,
+        count: members.length,
+        mine: members.some((m) => m.mine),
+        selects: pickers.size,
+        notes: members.reduce((n, m) => n + (m.notes ?? 0), 0),
+        notesOpen: members.reduce((n, m) => n + (m.notesOpen ?? 0), 0),
+      });
+    }
+    return tiles;
+  };
+
+  /** The heart on a model's tile: on if you've picked any of their photos; off clears them all. */
+  const toggleTile = (id: string) => {
+    const img = images.find((x) => x.id === id);
+    const members = img && peopleByKey ? peopleByKey.get(personKey(img)) ?? [img] : null;
+    if (!members || members.length < 2) { toggle(id); return; }
+    const mine = members.filter((m) => m.mine);
+    if (mine.length) mine.forEach((m) => toggle(m.id));
+    else toggle(members[0]!.id);
+  };
 
   // Keep the viewer on a real frame when the set under it shrinks (a delete, or
   // deselecting while filtered to "My selects").
   useEffect(() => {
     if (openIndex === null) return;
-    if (visible.length === 0) closeViewer();
-    else if (openIndex > visible.length - 1) setOpenIndex(visible.length - 1);
-  }, [visible.length, openIndex, closeViewer]);
+    if (viewerList.length === 0) closeViewer();
+    else if (openIndex > viewerList.length - 1) setOpenIndex(viewerList.length - 1);
+  }, [viewerList.length, openIndex, closeViewer]);
 
   // Highlight whichever album heading is nearest the top of the viewport.
   useEffect(() => {
@@ -484,7 +563,7 @@ export default function Gallery({
       // Typing a note: those keys are letters, not shortcuts.
       if ((e.target as HTMLElement | null)?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
       if (e.key === ' ' || e.key.toLowerCase() === 'f') {
-        const img = visible[openIndex];
+        const img = viewerList[openIndex];
         if (img) {
           e.preventDefault();
           void toggle(img.id);
@@ -493,7 +572,7 @@ export default function Gallery({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [openIndex, visible, toggle]);
+  }, [openIndex, viewerList, toggle]);
 
   if (!data) {
     return (
@@ -737,7 +816,7 @@ export default function Gallery({
         <label>Show</label>
         <nav style={{ marginBottom: 20 }}>
           {([
-            { key: 'all', label: casting ? 'All talent' : 'All photos', n: images.length },
+            { key: 'all', label: casting ? 'All talent' : 'All photos', n: peopleByKey ? peopleByKey.size : images.length },
             { key: 'mine', label: 'My selects', n: mineCount },
             { key: 'any', label: 'All selects', n: anyCount },
             { key: 'agreed', label: AGREED, n: agreedCount, title: AGREED_WORDS },
@@ -1103,8 +1182,9 @@ export default function Gallery({
           </p>
         )}
         {mode === 'browse' && data.albums.map((album, i) => {
-          const list = byAlbum.get(i) ?? [];
-          if (list.length === 0 && (filter.kind !== 'all' || (casting && query.trim()))) return null;
+          const photos = byAlbum.get(i) ?? [];
+          if (photos.length === 0 && (filter.kind !== 'all' || (casting && query.trim()))) return null;
+          const list = tilesFor(photos);
           const picked = list.filter((x) => x.mine).length;
           return (
             <section key={album.id} ref={(el) => { sectionRefs.current[i] = el; }}>
@@ -1163,7 +1243,7 @@ export default function Gallery({
                   const i = img ? indexOf.get(img.id) : undefined;
                   if (i !== undefined) openViewer(i);
                 }}
-                onToggle={toggle}
+                onToggle={casting ? toggleTile : toggle}
                 onDownload={canDownload ? downloadFrame : undefined}
                 showNames={admin && filter.kind === 'dup'}
                 caption={casting ? (img) => ({ title: talentName(img), sub: img.info }) : undefined}
@@ -1196,9 +1276,9 @@ export default function Gallery({
         </div>
       )}
 
-      {openIndex !== null && visible[openIndex] && (
+      {openIndex !== null && viewerList[openIndex] && (
         <Viewer
-          images={visible}
+          images={viewerList}
           index={openIndex}
           onIndex={setOpenIndex}
           onClose={closeViewer}
@@ -1212,8 +1292,15 @@ export default function Gallery({
             });
             setData((d) => d && { ...d, project: { ...d.project, coverImageId: id } });
           } : undefined}
-          albumName={data.albums[visible[openIndex]!.album]?.name}
-          talent={casting ? (img) => ({ name: talentName(img), link: img.link, info: img.info }) : undefined}
+          albumName={data.albums[viewerList[openIndex]!.album]?.name}
+          talent={casting ? (img) => {
+            const members = peopleByKey?.get(personKey(img as GalleryImg)) ?? [];
+            const at = members.findIndex((m) => m.id === img.id);
+            return {
+              name: talentName(img), link: img.link, info: img.info,
+              of: members.length > 1 ? `photo ${at + 1} of ${members.length}` : null,
+            };
+          } : undefined}
           onEditDetails={admin && casting ? editDetails : undefined}
           notesApi={notesApi}
           workScope={base}
@@ -1222,7 +1309,7 @@ export default function Gallery({
           onDownload={canDownload ? downloadFrame : undefined}
           pickers={(() => {
             // You first, then everyone else in the order they joined.
-            const ids = new Set(pickersByImage.get(visible[openIndex]!.id) ?? []);
+            const ids = new Set(pickersByImage.get(viewerList[openIndex]!.id) ?? []);
             return reviewers
               .filter((r) => ids.has(r.id))
               .sort((a, b) => Number(b.isMe) - Number(a.isMe))

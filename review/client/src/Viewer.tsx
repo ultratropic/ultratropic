@@ -121,7 +121,7 @@ export default function Viewer({
   pickers?: string[];
   onDownload?: (img: Img) => void;
   /** Casting: show the person, not the file. */
-  talent?: (img: Img) => { name: string; link?: string | null; info?: string | null };
+  talent?: (img: Img) => { name: string; link?: string | null; info?: string | null; of?: string | null };
   /** Owner, casting: edit name, portfolio link and status. */
   onEditDetails?: (img: Img) => void;
   /** Retouch notes: pins on the photo and a notes panel. */
@@ -167,7 +167,9 @@ export default function Viewer({
 
   // ---- notes ----
   const [notesOpen, setNotesOpen] = useState(() => {
-    try { return !!notesApi && sessionStorage.getItem(NOTES_KEY) === '1'; } catch { return false; }
+    // Open by default; closing it is remembered for the rest of the visit.
+    if (!notesApi) return false;
+    try { return sessionStorage.getItem(NOTES_KEY) !== '0'; } catch { return true; }
   });
   // Notes are kept with the photo they belong to, so a late answer for one
   // photo can never show up on the next.
@@ -218,8 +220,9 @@ export default function Viewer({
     return () => { ro.disconnect(); window.removeEventListener('resize', measure); };
   }, [notesOpen, img?.id]);
 
-  // The photo's size on screen at zoom 1: fitted, never enlarged past its pixels.
-  const fit = img && stage.w > 0 ? Math.min(1, stage.w / img.w, stage.h / img.h) : 0;
+  // The photo's size on screen at zoom 1: as big as the space allows, small
+  // photos (castings often are) scaled up to fill it rather than left tiny.
+  const fit = img && stage.w > 0 ? Math.min(stage.w / img.w, stage.h / img.h) : 0;
   const fw = img ? img.w * fit : 0;
   const fh = img ? img.h * fit : 0;
 
@@ -680,6 +683,7 @@ export default function Viewer({
           return (
             <span className="viewer-title">
               <strong className="viewer-name">{t.name}</strong>
+              {t.of && <span className="viewer-info">{t.of}</span>}
               {t.info && <span className="viewer-info">{t.info}</span>}
               {albumName && <span className="viewer-info">{albumName}</span>}
             </span>

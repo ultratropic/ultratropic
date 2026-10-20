@@ -13,6 +13,8 @@ export interface Img {
   name?: string | null;
   link?: string | null;
   info?: string | null;
+  /** Casting: how many photos of this model the tile stands for. */
+  count?: number;
   /** Retouch notes on this frame: all, and still open. */
   notes?: number;
   notesOpen?: number;
@@ -234,6 +236,15 @@ export default function Grid({
                 >
                   Delete
                 </button>
+              )}
+              {(img.count ?? 1) > 1 && (
+                <span className="count-badge" title={`${img.count} photos`}>
+                  <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+                    <rect x="4.5" y="2.5" width="9" height="9" rx="1" fill="none" stroke="currentColor" strokeWidth="1.4" />
+                    <path d="M2.5 5v8.5H11" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                  </svg>
+                  {img.count}
+                </span>
               )}
               {(img.notes ?? 0) > 0 && (
                 <span
