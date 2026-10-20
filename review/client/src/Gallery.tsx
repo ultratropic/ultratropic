@@ -10,6 +10,7 @@ import CopyLink from './CopyLink';
 import Logo from './Logo';
 import { useNoZoom } from './useNoZoom';
 import { downloadOne, downloadZip } from './download';
+import { talentFromFilename } from '../../shared/names';
 
 export interface GalleryImg extends Img {
   album: number;
@@ -27,6 +28,9 @@ interface GalleryData {
     hasPassword?: boolean; coverImageId?: string | null;
     /** Whether reviewers get download buttons. The owner always does. */
     allowDownloads: boolean;
+    /** A casting shows people: names under photos, portfolio links, a brief. */
+    kind: 'shoot' | 'casting';
+    brief: string | null;
   };
   me: { id: string; name: string };
   albums: Album[];
@@ -80,6 +84,9 @@ const AGREED = '\u2665\uFE0E\u2665\uFE0E+';
 const AGREED_WORDS = 'Selected by 2 or more people';
 const EVERYONE_WORDS =
   `Selected by everyone — counting only people who've selected at least ${ACTIVE_SHARE * 100}% of the photos`;
+
+/** Who's in a casting photo: the name given, or one made from the filename. */
+const talentName = (img: { name?: string | null; filename: string }) => img.name || talentFromFilename(img.filename);
 
 const scrollKey = () => `review-scroll:${location.pathname}${location.search}`;
 
@@ -143,6 +150,9 @@ export default function Gallery({
   /** Phones: the sidebar lives behind this full-screen menu. */
   const [menuOpen, setMenuOpen] = useState(false);
   const [c1Help, setC1Help] = useState(false);
+  /** Casting: narrow the view to names containing this. */
+  const [query, setQuery] = useState('');
+  const [editingBrief, setEditingBrief] = useState<string | null>(null);
   const sectionRefs = useRef<Array<HTMLElement | null>>([]);
   const sideRef = useRef<HTMLElement | null>(null);
   const imagesRef = useRef<GalleryImg[]>([]);
@@ -183,6 +193,9 @@ export default function Gallery({
         selects: r[7] as number,
         mine: (r[8] as number) === 1,
         dup: (r[9] as number) === 1,
+        name: (r[10] as string | null) ?? null,
+        link: (r[11] as string | null) ?? null,
+        info: (r[12] as string | null) ?? null,
       })),
     );
     setSelectedBy(d.selectionsByReviewer ?? {});
@@ -353,7 +366,7 @@ export default function Gallery({
 
   const everyone = useMemo(() => selectedByEveryone(selectedBy, images.length), [selectedBy, images.length]);
 
-  const visible = useMemo(() => {
+  const byFilter = useMemo(() => {
     switch (filter.kind) {
       case 'mine': return images.filter((i) => i.mine);
       case 'any': return images.filter((i) => i.selects > 0);
@@ -367,6 +380,14 @@ export default function Gallery({
       default: return images;
     }
   }, [images, filter, selectedBy, everyone]);
+
+  const casting = data?.project.kind === 'casting';
+  // Casting: the name search narrows whatever filter is on.
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!casting || !q) return byFilter;
+    return byFilter.filter((i) => talentName(i).toLowerCase().includes(q));
+  }, [byFilter, casting, query]);
 
   const byAlbum = useMemo(() => {
     const groups = new Map<number, GalleryImg[]>();
@@ -503,6 +524,27 @@ export default function Gallery({
     }
   };
 
+  /** Owner, casting: name, portfolio link and status line for one photo. */
+  const editDetails = async (img: { id: string; name?: string | null; filename: string; link?: string | null; info?: string | null }) => {
+    const name = window.prompt('Name:', talentName(img));
+    if (name === null) return;
+    const link = window.prompt('Portfolio link (leave empty for none):', img.link ?? '');
+    if (link === null) return;
+    const info = window.prompt('Status, e.g. "1st option · Nov 17–18" (leave empty for none):', img.info ?? '');
+    if (info === null) return;
+    try {
+      await api(`/api/admin/images/${img.id}/details`, {
+        method: 'POST', body: JSON.stringify({ name, link, info }),
+      });
+    } catch (err) {
+      window.alert((err as Error).message);
+      return;
+    }
+    const patch = { name: name.trim() || null, link: link.trim() || null, info: info.trim() || null };
+    imagesRef.current = imagesRef.current.map((x) => (x.id === img.id ? { ...x, ...patch } : x));
+    setImages((list) => list.map((x) => (x.id === img.id ? { ...x, ...patch } : x)));
+  };
+
   const downloadFrame = (img: { filename: string; preview: string }) => {
     downloadOne(img).catch((err) =>
       setDl({ done: 0, total: 1, label: img.filename, error: (err as Error).message }));
@@ -616,10 +658,20 @@ export default function Gallery({
           </p>
         ) : null}
 
+        {casting && images.length > 0 && (
+          <input
+            className="find"
+            type="search"
+            placeholder="Find a name"
+            aria-label="Find a name"
+            value={query}
+            onChange={(e) => { setQuery(e.target.value); setMode('browse'); }}
+          />
+        )}
         <label>Show</label>
         <nav style={{ marginBottom: 20 }}>
           {([
-            { key: 'all', label: 'All photos', n: images.length },
+            { key: 'all', label: casting ? 'All talent' : 'All photos', n: images.length },
             { key: 'mine', label: 'My selects', n: mineCount },
             { key: 'any', label: 'All selects', n: anyCount },
             { key: 'agreed', label: AGREED, n: agreedCount, title: AGREED_WORDS },
@@ -650,7 +702,7 @@ export default function Gallery({
               <span className="meta">{r.count}</span>
             </button>
           ))}
-          {admin && dupCount > 0 && (
+          {admin && !casting && dupCount > 0 && (
             <button
               className={`side-link${filter.kind === 'dup' && mode !== 'stats' ? ' active' : ''}`}
               onClick={() => { setFilter({ kind: 'dup' }); setMode('browse'); }}
@@ -670,7 +722,21 @@ export default function Gallery({
           )}
         </nav>
 
-        {admin && images.length > 0 && (
+        {admin && images.length > 0 && casting && (
+          <>
+            <label>Shortlist · {exportLabel} ({exportCount})</label>
+            <div className="export-row">
+              <a href={exportHref('csv')} download aria-disabled={exportCount === 0}
+                title="Name, agency, portfolio, status and who picked them — opens in Numbers or Excel">
+                Download shortlist
+              </a>
+            </div>
+            <p className="meta export-more">
+              <a href={exportHref('txt')} download aria-disabled={exportCount === 0}>Names only</a>
+            </p>
+          </>
+        )}
+        {admin && images.length > 0 && !casting && (
           <>
             <label>Capture One · {exportLabel} ({exportCount})</label>
             <div className="export-row">
@@ -771,6 +837,26 @@ export default function Gallery({
               />
               <span>Reviewers can download</span>
             </label>
+            <label className="radio setting" title="Names under photos, portfolio links, a brief and a shortlist export">
+              <input
+                type="checkbox"
+                checked={casting}
+                onChange={async (e) => {
+                  const kind = e.target.checked ? 'casting' : 'shoot';
+                  const before = data.project.kind;
+                  setData((d) => d && { ...d, project: { ...d.project, kind } });
+                  try {
+                    await api(`/api/admin/projects/${data.project.id}/settings`, {
+                      method: 'POST', body: JSON.stringify({ kind }),
+                    });
+                    void loadGallery();
+                  } catch {
+                    setData((d) => d && { ...d, project: { ...d.project, kind: before } });
+                  }
+                }}
+              />
+              <span>Casting project</span>
+            </label>
 
             <button
               className="ghost danger"
@@ -862,6 +948,41 @@ export default function Gallery({
           />
         )}
 
+        {casting && mode === 'browse' && (data.project.brief || admin) && (
+          <div className="brief">
+            {editingBrief !== null ? (
+              <>
+                <textarea
+                  value={editingBrief}
+                  onChange={(e) => setEditingBrief(e.target.value)}
+                  placeholder="The casting brief reviewers see: dates, location, rate, usage, what you're looking for."
+                  autoFocus
+                />
+                <button className="text-btn" onClick={async () => {
+                  const brief = editingBrief;
+                  await api(`/api/admin/projects/${data.project.id}/settings`, {
+                    method: 'POST', body: JSON.stringify({ brief }),
+                  });
+                  setEditingBrief(null);
+                  setData((d) => d && { ...d, project: { ...d.project, brief: brief.trim() || null } });
+                }}>Save brief</button>{' '}
+                <button className="text-btn" onClick={() => setEditingBrief(null)}>Cancel</button>
+              </>
+            ) : (
+              <>
+                {data.project.brief ? <><strong>Brief</strong>{'\n'}{data.project.brief}</> : null}
+                {admin && (
+                  <>
+                    {data.project.brief ? '\n' : null}
+                    <button className="text-btn" onClick={() => setEditingBrief(data.project.brief ?? '')}>
+                      {data.project.brief ? 'Edit brief' : 'Add a brief'}
+                    </button>
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        )}
         {sharedLabel && mode === 'browse' && (
           <div className="share-note">
             <span>Shared with you: <strong>{sharedLabel}</strong></span>
@@ -895,14 +1016,14 @@ export default function Gallery({
         )}
         {mode === 'browse' && data.albums.map((album, i) => {
           const list = byAlbum.get(i) ?? [];
-          if (list.length === 0 && filter.kind !== 'all') return null;
+          if (list.length === 0 && (filter.kind !== 'all' || (casting && query.trim()))) return null;
           const picked = list.filter((x) => x.mine).length;
           return (
             <section key={album.id} ref={(el) => { sectionRefs.current[i] = el; }}>
               <header className="section-head">
                 <h3>{album.name}</h3>
                 <span className="meta">
-                  {list.length} {list.length === 1 ? 'image' : 'images'}
+                  {list.length} {casting ? (list.length === 1 ? 'person' : 'people') : list.length === 1 ? 'image' : 'images'}
                   {picked > 0 && ` · ${picked} selected`}
                 </span>
                 {admin && (
@@ -957,6 +1078,7 @@ export default function Gallery({
                 onToggle={toggle}
                 onDownload={canDownload ? downloadFrame : undefined}
                 showNames={admin && filter.kind === 'dup'}
+                caption={casting ? (img) => ({ title: talentName(img), sub: img.info }) : undefined}
                 onDelete={admin && filter.kind === 'dup' ? (img) => {
                   if (window.confirm(`Delete ${img.filename}? This cannot be undone.`)) void deleteImage(img.id);
                 } : undefined}
@@ -1003,6 +1125,8 @@ export default function Gallery({
             setData((d) => d && { ...d, project: { ...d.project, coverImageId: id } });
           } : undefined}
           albumName={data.albums[visible[openIndex]!.album]?.name}
+          talent={casting ? (img) => ({ name: talentName(img), link: img.link, info: img.info }) : undefined}
+          onEditDetails={admin && casting ? editDetails : undefined}
           onDownload={canDownload ? downloadFrame : undefined}
           pickers={(() => {
             // You first, then everyone else in the order they joined.

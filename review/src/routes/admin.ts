@@ -226,15 +226,29 @@ admin.post('/projects/:pid/reset', async (c) => {
 
 /** Per-project settings the owner can change after creating it. */
 admin.post('/projects/:pid/settings', async (c) => {
-  const body = await c.req
-    .json<{ allowDownloads?: boolean }>()
-    .catch(() => ({}) as { allowDownloads?: boolean });
-  if (typeof body.allowDownloads !== 'boolean') return c.json({ error: 'allowDownloads: boolean required' }, 400);
-  const res = await c.env.DB.prepare(`UPDATE projects SET allow_downloads = ? WHERE id = ?`)
-    .bind(body.allowDownloads ? 1 : 0, c.req.param('pid'))
+  type Body = { allowDownloads?: boolean; kind?: string; brief?: string | null };
+  const body = await c.req.json<Body>().catch(() => ({}) as Body);
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  if (body.allowDownloads !== undefined) {
+    if (typeof body.allowDownloads !== 'boolean') return c.json({ error: 'allowDownloads: boolean' }, 400);
+    sets.push('allow_downloads = ?'); values.push(body.allowDownloads ? 1 : 0);
+  }
+  if (body.kind !== undefined) {
+    if (body.kind !== 'shoot' && body.kind !== 'casting') return c.json({ error: "kind: 'shoot' or 'casting'" }, 400);
+    sets.push('kind = ?'); values.push(body.kind);
+  }
+  if (body.brief !== undefined) {
+    if (body.brief !== null && typeof body.brief !== 'string') return c.json({ error: 'brief: string or null' }, 400);
+    const brief = body.brief?.trim().slice(0, 4000) || null;
+    sets.push('description = ?'); values.push(brief);
+  }
+  if (!sets.length) return c.json({ error: 'nothing to change' }, 400);
+  const res = await c.env.DB.prepare(`UPDATE projects SET ${sets.join(', ')} WHERE id = ?`)
+    .bind(...values, c.req.param('pid'))
     .run();
   if (!res.meta.changes) return c.json({ error: 'project not found' }, 404);
-  return c.json({ allowDownloads: body.allowDownloads });
+  return c.json({ ok: true });
 });
 
 /** Choose the project's cover image, or pass null to go back to the first frame. */
@@ -266,6 +280,35 @@ admin.post('/reviewers/:id/hidden', async (c) => {
     .run();
   if (!res.meta.changes) return c.json({ error: 'reviewer not found' }, 404);
   return c.json({ hidden });
+});
+
+/**
+ * Casting details for one photo: who it is, where their portfolio lives, and a
+ * status line (option, hold, availability). Empty strings clear a field.
+ */
+admin.post('/images/:id/details', async (c) => {
+  type Body = { name?: string; link?: string; info?: string };
+  const body = await c.req.json<Body>().catch(() => ({}) as Body);
+  const clean = (v: unknown, max: number) =>
+    v === undefined ? undefined : typeof v === 'string' ? v.trim().slice(0, max) || null : false;
+  const name = clean(body.name, 120);
+  const link = clean(body.link, 1000);
+  const info = clean(body.info, 300);
+  if (name === false || link === false || info === false) return c.json({ error: 'strings only' }, 400);
+  // Only web links: this is rendered as an href for every reviewer.
+  if (link && !/^https?:\/\//i.test(link)) return c.json({ error: 'link must start with http:// or https://' }, 400);
+  const res = await c.env.DB.prepare(
+    `UPDATE images SET
+       talent_name = CASE WHEN ?1 THEN ?2 ELSE talent_name END,
+       link        = CASE WHEN ?3 THEN ?4 ELSE link END,
+       info        = CASE WHEN ?5 THEN ?6 ELSE info END
+     WHERE id = ?7`,
+  )
+    .bind(name !== undefined ? 1 : 0, name ?? null, link !== undefined ? 1 : 0, link ?? null,
+      info !== undefined ? 1 : 0, info ?? null, c.req.param('id'))
+    .run();
+  if (!res.meta.changes) return c.json({ error: 'image not found' }, 404);
+  return c.json({ ok: true });
 });
 
 /** Remove one frame: its derivatives, its selections, its row. */

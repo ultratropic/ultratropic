@@ -40,3 +40,13 @@ export const isPhoto = (name: string) => PHOTO_EXT.test(name);
 export const MAYBE_UNSUPPORTED = /\.(heic|heif|tiff?|avif)$/i;
 
 export const extOf = (name: string) => (name.match(/\.([^.]+)$/)?.[1] ?? '').toUpperCase();
+
+/** "trevor_stewart-02.jpg" → "Trevor Stewart": uploads named after the person. */
+export function talentFromFilename(filename: string): string {
+  return filename
+    .replace(/\.[^.]+$/, '')
+    .replace(/[-_ ]\d{1,3}$/, '')
+    .replace(/[_-]+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (ch) => ch.toUpperCase());
+}

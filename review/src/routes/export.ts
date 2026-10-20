@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { readAdmin } from '../lib/auth';
 import { slugify } from '../lib/ids';
-import { rawMatch } from '../../shared/names';
+import { rawMatch, talentFromFilename } from '../../shared/names';
 import { selectedByEveryone } from '../../shared/everyone';
 import type { Env, Vars } from '../types';
 
@@ -48,9 +48,9 @@ exp.get('/projects/:pid/export', async (c) => {
   const minPickers = Math.max(1, Number.parseInt(c.req.query('min') ?? '1', 10) || 1);
   const everyoneOnly = c.req.query('everyone') === '1';
 
-  const project = await c.env.DB.prepare(`SELECT id, name FROM projects WHERE id = ?`)
+  const project = await c.env.DB.prepare(`SELECT id, name, kind FROM projects WHERE id = ?`)
     .bind(projectId)
-    .first<{ id: string; name: string }>();
+    .first<{ id: string; name: string; kind: string }>();
   if (!project) return c.json({ error: 'project not found' }, 404);
 
   const [albums, images, selections, reviewers] = await Promise.all([
@@ -58,13 +58,16 @@ exp.get('/projects/:pid/export', async (c) => {
       .bind(projectId)
       .all<{ id: string; name: string; seq: number }>(),
     c.env.DB.prepare(
-      `SELECT i.id, i.original_filename, i.album_id, i.capture_time
+      `SELECT i.id, i.original_filename, i.album_id, i.capture_time, i.talent_name, i.link, i.info
          FROM images i JOIN albums a ON a.id = i.album_id
         WHERE i.project_id = ?
         ORDER BY a.seq, i.seq`,
     )
       .bind(projectId)
-      .all<{ id: string; original_filename: string; album_id: string; capture_time: number | null }>(),
+      .all<{
+        id: string; original_filename: string; album_id: string; capture_time: number | null;
+        talent_name: string | null; link: string | null; info: string | null;
+      }>(),
     c.env.DB.prepare(
       `SELECT image_id, reviewer_id FROM selections WHERE project_id = ? ORDER BY created_at`,
     )
@@ -104,8 +107,30 @@ exp.get('/projects/:pid/export', async (c) => {
   const atLeast = everyoneOnly ? '-everyone' : minPickers > 1 ? `-${minPickers}plus` : '';
   const filename = `${slugify(project.name)}-selects-${who}${atLeast}${where}.${format}`;
 
+  // A casting shortlist is about people: who, which agency, where to see more.
+  const casting = project.kind === 'casting';
+  const talent = (img: { talent_name: string | null; original_filename: string }) =>
+    img.talent_name || talentFromFilename(img.original_filename);
+
   let body: string;
-  if (format === 'txt') {
+  if (casting && format === 'txt') {
+    body = chosen.map((i) => `${talent(i)} — ${albumName.get(i.album_id) ?? ''}`).join('\n') + (chosen.length ? '\n' : '');
+  } else if (casting) {
+    const lines = ['name,agency,portfolio,status,select_count,selected_by,filename'];
+    for (const img of chosen) {
+      const names = (pickers.get(img.id) ?? []).map((id) => safeName(reviewerName.get(id) ?? '?'));
+      lines.push([
+        csvField(safeName(talent(img))),
+        csvField(safeName(albumName.get(img.album_id) ?? '')),
+        csvField(img.link ?? ''),
+        csvField(safeName(img.info ?? '')),
+        String(names.length),
+        csvField(names.join('; ')),
+        csvField(img.original_filename),
+      ].join(','));
+    }
+    body = lines.join('\r\n') + '\r\n';
+  } else if (format === 'txt') {
     // The simplest possible handoff: one original filename per line, exactly as uploaded.
     body = chosen.map((i) => i.original_filename).join('\n') + (chosen.length ? '\n' : '');
   } else {

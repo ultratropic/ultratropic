@@ -30,6 +30,8 @@ export default function Viewer({
   albumName,
   pickers = [],
   onDownload,
+  talent,
+  onEditDetails,
 }: {
   images: Img[];
   index: number;
@@ -45,6 +47,10 @@ export default function Viewer({
   /** Names of everyone who picked this frame, "You" first. */
   pickers?: string[];
   onDownload?: (img: Img) => void;
+  /** Casting: show the person, not the file. */
+  talent?: (img: Img) => { name: string; link?: string | null; info?: string | null };
+  /** Owner, casting: edit name, portfolio link and status. */
+  onEditDetails?: (img: Img) => void;
 }) {
   const img = images[index];
   const [dragX, setDragX] = useState(0);
@@ -177,10 +183,21 @@ export default function Viewer({
       }}
     >
       <div className="viewer-head">
-        <span className="viewer-title mono">
-          {albumName && <span style={{ marginRight: 10 }}>{albumName}</span>}
-          {img.filename}
-        </span>
+        {talent ? (() => {
+          const t = talent(img);
+          return (
+            <span className="viewer-title">
+              <strong className="viewer-name">{t.name}</strong>
+              {t.info && <span className="viewer-info">{t.info}</span>}
+              {albumName && <span className="viewer-info">{albumName}</span>}
+            </span>
+          );
+        })() : (
+          <span className="viewer-title mono">
+            {albumName && <span style={{ marginRight: 10 }}>{albumName}</span>}
+            {img.filename}
+          </span>
+        )}
         <span className="viewer-count">
           {index + 1} / {images.length}
         </span>
@@ -234,6 +251,18 @@ export default function Viewer({
 
       <div className="viewer-foot">
         <span className="viewer-actions">
+          {talent && (() => {
+            const link = talent(img).link;
+            return link ? (
+              <a className="text-btn" href={link} target="_blank" rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}>Portfolio ↗</a>
+            ) : null;
+          })()}
+          {onEditDetails && (
+            <button className="text-btn" onClick={(e) => { e.stopPropagation(); onEditDetails(img); }}>
+              Edit details
+            </button>
+          )}
           {onDownload && (
             <button className="text-btn" onClick={(e) => { e.stopPropagation(); onDownload(img); }}>
               Download

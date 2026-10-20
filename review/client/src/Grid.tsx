@@ -9,6 +9,10 @@ export interface Img {
   h: number;
   selects?: number;
   mine?: boolean;
+  /** Casting: who this is, their portfolio, and a status line. */
+  name?: string | null;
+  link?: string | null;
+  info?: string | null;
 }
 
 interface Row {
@@ -20,13 +24,14 @@ interface Row {
 const GAP = 6;
 const TARGET_ROW_HEIGHT = 260;
 const OVERSCAN = 900; // px of off-screen rows to keep mounted
+const CAPTION_HEIGHT = 40; // px under each row when tiles carry a caption
 
 /**
  * Justified rows, the layout every photo tool converges on: each row is scaled to
  * fill the width at roughly a target height, so frames keep their true aspect ratio
  * and nothing is cropped. Portrait and landscape can then sit side by side.
  */
-function layout(images: Img[], containerWidth: number): { rows: Row[]; total: number } {
+function layout(images: Img[], containerWidth: number, caption = 0): { rows: Row[]; total: number } {
   const rows: Row[] = [];
   let current: Img[] = [];
   let ratioSum = 0;
@@ -49,7 +54,7 @@ function layout(images: Img[], containerWidth: number): { rows: Row[]; total: nu
       height: Math.round(height),
       top,
     });
-    top += Math.round(height) + GAP;
+    top += Math.round(height) + caption + GAP;
     current = [];
     ratioSum = 0;
   };
@@ -103,6 +108,7 @@ export default function Grid({
   onDelete,
   onDownload,
   showNames = false,
+  caption,
 }: {
   images: Img[];
   onOpen: (index: number) => void;
@@ -113,7 +119,10 @@ export default function Grid({
   onDownload?: (img: Img) => void;
   /** Filenames on the tiles — what tells two near-identical frames apart. */
   showNames?: boolean;
+  /** A line or two under each photo (casting: name and status). */
+  caption?: (img: Img) => { title: string; sub?: string | null };
 }) {
+  const captionHeight = caption ? CAPTION_HEIGHT : 0;
   const ref = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   const [range, setRange] = useState({ top: 0, bottom: 0 });
@@ -159,8 +168,8 @@ export default function Grid({
   }, []);
 
   const { rows, total } = useMemo(
-    () => (width > 0 ? layout(images, width) : { rows: [], total: 0 }),
-    [images, width],
+    () => (width > 0 ? layout(images, width, captionHeight) : { rows: [], total: 0 }),
+    [images, width, captionHeight],
   );
 
   // Index of each image, so a click can open the viewer at the right position.
@@ -170,7 +179,7 @@ export default function Grid({
     return m;
   }, [images]);
 
-  const visible = rows.filter((r) => r.top + r.height >= range.top && r.top <= range.bottom);
+  const visible = rows.filter((r) => r.top + r.height + captionHeight >= range.top && r.top <= range.bottom);
 
   return (
     <div ref={ref} style={{ position: 'relative', height: total }}>
@@ -180,7 +189,8 @@ export default function Grid({
           style={{ position: 'absolute', top: row.top, left: 0, display: 'flex', gap: GAP }}
         >
           {row.items.map(({ img, w, h }) => (
-            <div key={img.id} className={`tile${img.mine ? ' selected' : ''}`} style={{ width: w, height: h }}>
+            <div key={img.id} style={{ width: w }}>
+            <div className={`tile${img.mine ? ' selected' : ''}`} style={{ width: w, height: h }}>
               <button
                 onClick={() => onOpen(indexOf.get(img.id)!)}
                 title={img.filename}
@@ -225,6 +235,16 @@ export default function Grid({
               {onToggle && (
                 <HeartBadge img={img} onToggle={onToggle} />
               )}
+            </div>
+            {caption && (() => {
+              const c = caption(img);
+              return (
+                <div className="tile-caption" style={{ height: CAPTION_HEIGHT }} title={c.sub ? `${c.title} · ${c.sub}` : c.title}>
+                  <span className="tile-caption-title">{c.title}</span>
+                  {c.sub && <span className="tile-caption-sub">{c.sub}</span>}
+                </div>
+              );
+            })()}
             </div>
           ))}
         </div>

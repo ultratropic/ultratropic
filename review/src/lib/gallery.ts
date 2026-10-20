@@ -19,7 +19,7 @@ interface Options {
  */
 export async function buildGallery(env: Env, o: Options) {
   const project = await env.DB.prepare(
-    `SELECT id, name, slug, preview_edge, cover_image_id, allow_downloads,
+    `SELECT id, name, slug, preview_edge, cover_image_id, allow_downloads, kind, description,
             password_hash IS NOT NULL AS has_password
        FROM projects WHERE id = ?`,
   )
@@ -27,6 +27,7 @@ export async function buildGallery(env: Env, o: Options) {
     .first<{
       id: string; name: string; slug: string; preview_edge: number;
       cover_image_id: string | null; allow_downloads: number; has_password: number;
+      kind: string; description: string | null;
     }>();
   if (!project) return null;
 
@@ -39,7 +40,7 @@ export async function buildGallery(env: Env, o: Options) {
       .all<{ id: string; name: string; slug: string; share_token: string | null; has_password: number }>(),
     env.DB.prepare(
       `SELECT i.id, i.original_filename, i.thumb_key, i.preview_key, i.width, i.height,
-              i.album_id, i.checksum
+              i.album_id, i.checksum, i.talent_name, i.link, i.info
          FROM images i JOIN albums a ON a.id = i.album_id
         WHERE i.project_id = ?
         ORDER BY a.seq, i.seq`,
@@ -48,6 +49,7 @@ export async function buildGallery(env: Env, o: Options) {
       .all<{
         id: string; original_filename: string; thumb_key: string; preview_key: string;
         width: number; height: number; album_id: string; checksum: string | null;
+        talent_name: string | null; link: string | null; info: string | null;
       }>(),
     env.DB.prepare(`SELECT reviewer_id, image_id FROM selections WHERE project_id = ?`)
       .bind(o.projectId)
@@ -107,6 +109,9 @@ export async function buildGallery(env: Env, o: Options) {
       slug: o.includeSlug ? project.slug : null,
       previewEdge: project.preview_edge,
       allowDownloads: project.allow_downloads === 1,
+      kind: project.kind === 'casting' ? 'casting' : 'shoot',
+      // The description doubles as a casting brief; shoots don't show it.
+      brief: project.kind === 'casting' ? project.description : null,
       ...(o.admin ? { hasPassword: project.has_password === 1, coverImageId: project.cover_image_id } : {}),
     },
     reviewerId: o.reviewerId,
@@ -128,7 +133,7 @@ export async function buildGallery(env: Env, o: Options) {
       }))
       .filter((r) => r.isMe || r.count > 0 || o.admin),
     selectionsByReviewer,
-    fields: ['id', 'filename', 'thumb', 'preview', 'w', 'h', 'album', 'selects', 'mine', 'dup'],
+    fields: ['id', 'filename', 'thumb', 'preview', 'w', 'h', 'album', 'selects', 'mine', 'dup', 'name', 'link', 'info'],
     rows: images.map((i) => [
       i.id,
       i.original_filename,
@@ -140,6 +145,9 @@ export async function buildGallery(env: Env, o: Options) {
       selectCount.get(i.id) ?? 0,
       mine.has(i.id) ? 1 : 0,
       dup.has(i.id) ? 1 : 0,
+      i.talent_name,
+      i.link,
+      i.info,
     ]),
   };
 }
