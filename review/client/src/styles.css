@@ -202,6 +202,11 @@ button.ghost.danger:hover { border-color: #c0392b; }
   color: var(--fg); border: 1px solid var(--line); border-radius: 3px;
 }
 .export-row a:hover { border-color: var(--fg); }
+.export-row .export-btn {
+  flex: 1; padding: 8px 0; font-size: 13px; background: transparent;
+  color: var(--fg); border: 1px solid var(--line); border-radius: 3px;
+}
+.export-row .export-btn:hover:not(:disabled) { border-color: var(--fg); }
 .export-row a[aria-disabled='true'] { opacity: 0.35; pointer-events: none; }
 .export-row { margin-bottom: 6px; }
 .export-more { margin: 0 0 18px; }

@@ -45,11 +45,11 @@ async function fetchFrame(previewKey: string, signal?: AbortSignal): Promise<Blo
 }
 
 /** The original name, but always ending .jpg/.jpeg since that's what it now is. */
-function jpegName(filename: string): string {
+export function jpegName(filename: string): string {
   return /\.jpe?g$/i.test(filename) ? filename : `${filename.replace(/\.[^.]+$/, '')}.jpg`;
 }
 
-function save(blob: Blob, filename: string): void {
+export function save(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -64,7 +64,7 @@ export async function downloadOne(frame: { filename: string; preview: string }):
   save(await fetchFrame(frame.preview), jpegName(frame.filename));
 }
 
-const safeSegment = (s: string) => s.replace(/[\\/:*?"<>|]+/g, '-').replace(/^\.+/, '').trim() || 'album';
+export const safeSegment = (s: string) => s.replace(/[\\/:*?"<>|]+/g, '-').replace(/^\.+/, '').trim() || 'album';
 
 export interface ZipItem { filename: string; preview: string; album: string }
 
@@ -74,13 +74,7 @@ export async function downloadZip(
   onProgress: (done: number, total: number) => void,
   signal: AbortSignal,
 ): Promise<void> {
-  const enc = new TextEncoder();
-  const now = new Date();
-  const dosTime = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
-  const dosDate = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
-
-  interface Entry { name: Uint8Array<ArrayBuffer>; crc: number; size: number; offset: number; data: Blob }
-  const entries: Array<Entry | undefined> = new Array(items.length);
+  const files: Array<{ name: string; data: Blob } | undefined> = new Array(items.length);
   let done = 0;
   let next = 0;
 
@@ -91,20 +85,33 @@ export async function downloadZip(
       if (signal.aborted) throw new DOMException('cancelled', 'AbortError');
       const i = next++;
       const item = items[i]!;
-      const data = await fetchFrame(item.preview, signal);
-      const crc = crc32(new Uint8Array(await data.arrayBuffer()));
-      entries[i] = {
-        name: enc.encode(`${safeSegment(item.album)}/${jpegName(item.filename)}`),
-        crc, size: data.size, offset: 0, data,
-      };
+      files[i] = { name: `${safeSegment(item.album)}/${jpegName(item.filename)}`, data: await fetchFrame(item.preview, signal) };
       onProgress(++done, items.length);
     }
   }
   await Promise.all(Array.from({ length: Math.min(4, items.length) }, worker));
+  save(await buildZip(files as Array<{ name: string; data: Blob }>), `${safeSegment(zipName)}.zip`);
+}
+
+/** A "stored" (uncompressed) ZIP of these files, names as given (UTF-8, "/" for folders). */
+export async function buildZip(files: Array<{ name: string; data: Blob }>): Promise<Blob> {
+  const enc = new TextEncoder();
+  const now = new Date();
+  const dosTime = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
+  const dosDate = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+
+  interface Entry { name: Uint8Array<ArrayBuffer>; crc: number; size: number; offset: number; data: Blob }
+  const entries: Entry[] = [];
+  for (const f of files) {
+    entries.push({
+      name: enc.encode(f.name), crc: crc32(new Uint8Array(await f.data.arrayBuffer())),
+      size: f.data.size, offset: 0, data: f.data,
+    });
+  }
 
   const parts: BlobPart[] = [];
   let offset = 0;
-  for (const e of entries as Entry[]) {
+  for (const e of entries) {
     e.offset = offset;
     const h = new DataView(new ArrayBuffer(30));
     h.setUint32(0, 0x04034b50, true);
@@ -123,7 +130,7 @@ export async function downloadZip(
   if (offset > 0xfff00000) throw new Error('too large for one ZIP; download fewer at a time');
 
   const dirStart = offset;
-  for (const e of entries as Entry[]) {
+  for (const e of entries) {
     const c = new DataView(new ArrayBuffer(46));
     c.setUint32(0, 0x02014b50, true);
     c.setUint16(4, 20, true);
@@ -147,6 +154,5 @@ export async function downloadZip(
   end.setUint32(12, offset - dirStart, true);
   end.setUint32(16, dirStart, true);
   parts.push(end.buffer);
-
-  save(new Blob(parts, { type: 'application/zip' }), `${safeSegment(zipName)}.zip`);
+  return new Blob(parts, { type: 'application/zip' });
 }

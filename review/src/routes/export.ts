@@ -3,6 +3,7 @@ import { readAdmin } from '../lib/auth';
 import { slugify } from '../lib/ids';
 import { rawMatch, talentFromFilename } from '../../shared/names';
 import { selectedByEveryone } from '../../shared/everyone';
+import { listProjectNotes, notesLine } from '../lib/notes';
 import type { Env, Vars } from '../types';
 
 const exp = new Hono<{ Bindings: Env; Variables: Vars }>();
@@ -112,11 +113,20 @@ exp.get('/projects/:pid/export', async (c) => {
   const talent = (img: { talent_name: string | null; original_filename: string }) =>
     img.talent_name || talentFromFilename(img.original_filename);
 
+  // Retouch notes per frame, appended to the CSV as one readable column.
+  const notesBy = new Map<string, Parameters<typeof notesLine>[0]>();
+  if (format === 'csv') {
+    for (const n of await listProjectNotes(c.env, projectId, '')) {
+      (notesBy.get(n.imageId) ?? notesBy.set(n.imageId, []).get(n.imageId)!).push(n);
+    }
+  }
+  const notesFor = (id: string) => csvField(safeName(notesLine(notesBy.get(id) ?? [])));
+
   let body: string;
   if (casting && format === 'txt') {
     body = chosen.map((i) => `${talent(i)} — ${albumName.get(i.album_id) ?? ''}`).join('\n') + (chosen.length ? '\n' : '');
   } else if (casting) {
-    const lines = ['name,agency,portfolio,status,select_count,selected_by,filename'];
+    const lines = ['name,agency,portfolio,status,select_count,selected_by,filename,notes'];
     for (const img of chosen) {
       const names = (pickers.get(img.id) ?? []).map((id) => safeName(reviewerName.get(id) ?? '?'));
       lines.push([
@@ -127,6 +137,7 @@ exp.get('/projects/:pid/export', async (c) => {
         String(names.length),
         csvField(names.join('; ')),
         csvField(img.original_filename),
+        notesFor(img.id),
       ].join(','));
     }
     body = lines.join('\r\n') + '\r\n';
@@ -150,7 +161,7 @@ exp.get('/projects/:pid/export', async (c) => {
         : reviewerParam === 'all' ? 'All'
           : safeName(reviewerName.get(reviewerParam)!);
     const viewWithAlbum = albumParam ? `${view} (${albumName.get(albumParam)})` : view;
-    const lines = ['filename,raw_match,album,select_count,selected_by,capture_time,note,project,view'];
+    const lines = ['filename,raw_match,album,select_count,selected_by,capture_time,note,project,view,retouch_notes'];
     for (const img of chosen) {
       const raw = rawMatch(img.original_filename);
       const siblings = (byRaw.get(raw.toLowerCase()) ?? []).filter((f) => f !== img.original_filename);
@@ -166,6 +177,7 @@ exp.get('/projects/:pid/export', async (c) => {
           siblings.length ? csvField(`same RAW as ${siblings.join(', ')}`) : '',
           csvField(project.name),
           csvField(viewWithAlbum),
+          notesFor(img.id),
         ].join(','),
       );
     }

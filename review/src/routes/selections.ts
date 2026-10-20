@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { ulid } from '../lib/ids';
 import { readAdmin } from '../lib/auth';
 import { buildGallery } from '../lib/gallery';
-import { listNotes, addNote, noteImage, resolveNote, deleteNote } from '../lib/notes';
+import { listNotes, listProjectNotes, addNote, noteImage, resolveNote, deleteNote } from '../lib/notes';
 import type { Env, Vars } from '../types';
 
 const sel = new Hono<{ Bindings: Env; Variables: Vars }>();
@@ -131,6 +131,14 @@ sel.delete('/projects/:pid/selections/:imageId', async (c) => {
 });
 
 // ---- retouch notes (owner) ----
+
+/** Every note in the project at once: what the retouch sheet is built from. */
+sel.get('/projects/:pid/notes', async (c) => {
+  const projectId = c.req.param('pid');
+  const reviewerId = await adminReviewer(c, projectId);
+  if (!reviewerId) return c.json({ error: 'project not found' }, 404);
+  return c.json({ notes: await listProjectNotes(c.env, projectId, reviewerId) });
+});
 
 sel.get('/projects/:pid/images/:imageId/notes', async (c) => {
   const projectId = c.req.param('pid');

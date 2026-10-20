@@ -93,6 +93,57 @@ export async function listNotes(env: Env, imageId: string, viewerId: string, adm
     }));
 }
 
+/** Every note in a project, for the owner's retouch sheet and exports, in creation order. */
+export async function listProjectNotes(env: Env, projectId: string, viewerId: string): Promise<Array<NoteOut & { imageId: string }>> {
+  const { results } = await env.DB.prepare(
+    `SELECT n.id, n.image_id, n.parent_id, n.x, n.y, n.body, n.shapes, n.created_at, n.resolved_at, n.reviewer_id,
+            r.display_name AS author, rb.display_name AS resolver
+       FROM notes n
+       JOIN reviewers r ON r.id = n.reviewer_id
+       LEFT JOIN reviewers rb ON rb.id = n.resolved_by
+      WHERE n.project_id = ?
+      ORDER BY n.created_at`,
+  )
+    .bind(projectId)
+    .all<{
+      id: string; image_id: string; parent_id: string | null; x: number | null; y: number | null; body: string;
+      shapes: string | null; created_at: number; resolved_at: number | null; reviewer_id: string; author: string;
+      resolver: string | null;
+    }>();
+  return results.map((n) => ({
+    imageId: n.image_id,
+    id: n.id,
+    parentId: n.parent_id,
+    x: n.x,
+    y: n.y,
+    body: n.body,
+    shapes: n.shapes ? (JSON.parse(n.shapes) as Shape[]) : null,
+    author: n.author,
+    mine: n.reviewer_id === viewerId,
+    createdAt: n.created_at,
+    resolvedAt: n.resolved_at,
+    resolvedBy: n.resolved_at ? n.resolver : null,
+  }));
+}
+
+/**
+ * A frame's notes as one line of text for a CSV: pinned notes by number, as on
+ * screen, then general ones; replies after their note; resolved ones marked.
+ */
+export function notesLine(notes: Array<Pick<NoteOut, 'id' | 'parentId' | 'x' | 'body' | 'shapes' | 'author' | 'resolvedAt'>>): string {
+  const numbers = new Map<string, number>();
+  for (const n of notes) if (!n.parentId && n.x !== null) numbers.set(n.id, numbers.size + 1);
+  const top = notes.filter((n) => !n.parentId);
+  const say = (n: (typeof notes)[number]) => (n.body || (n.shapes?.length ? '(drawing)' : '')) + ` (${n.author})`;
+  return top
+    .map((n) => {
+      const head = `${numbers.has(n.id) ? `${numbers.get(n.id)}.` : '•'} ${say(n)}${n.resolvedAt ? ' [resolved]' : ''}`;
+      const replies = notes.filter((r) => r.parentId === n.id).map((r) => ` ↳ ${say(r)}`);
+      return [head, ...replies].join('');
+    })
+    .join(' | ');
+}
+
 type Input = { x?: unknown; y?: unknown; body?: unknown; parentId?: unknown; shapes?: unknown };
 
 /** Returns the new note's id, or an error message. */

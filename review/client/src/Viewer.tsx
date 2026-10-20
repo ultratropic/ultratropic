@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Img } from './Grid';
 import NotesPanel, { pinNumbers, COLORS, type Note, type NotesApi, type Shape, type Tool } from './NotesPanel';
+import { anchorOf, geometry, HALO, HALO_COLOR, STROKE } from './marks';
 
 const SWIPE_DISTANCE = 60;   // px: a deliberate horizontal drag
 const SWIPE_VELOCITY = 0.45; // px/ms: or a quick flick
@@ -12,53 +13,30 @@ const ZOOM_STEP = 1.6;
 // as many names as fit a line: six on a desktop, three on a phone.
 const shownPickers = () => (window.matchMedia('(max-width: 760px)').matches ? 3 : 6);
 const NOTES_KEY = 'review-notes-open';
-const STROKE = 3;        // px on screen, whatever the zoom
-const ARROW_HEAD = 14;   // px
 const MIN_MARK = 6;      // px: anything smaller was a slip, not a mark
-
-/** Where a mark is labelled: its pin goes here. */
-const anchorOf = (s: Shape): [number, number] =>
-  s.t === 'pen' ? s.p[0]! : s.t === 'ellipse' ? [Math.min(s.a[0], s.b[0]), Math.min(s.a[1], s.b[1])] : s.a;
+const isTyping = (t: EventTarget | null) =>
+  t instanceof HTMLElement && !!t.closest('input, textarea, select, [contenteditable="true"]');
 
 /**
  * One mark as SVG, in photo pixels (the SVG's viewBox is the photo's size).
- * `px` is how many photo pixels one screen pixel covers right now, so strokes
- * and arrowheads stay the same size on screen at any zoom. A dark halo under
- * each stroke keeps it readable on light and dark parts of a photo alike.
+ * A dark halo under each stroke keeps it readable on light and dark parts of a
+ * photo alike.
  */
 function ShapeSvg({ s, w, h, px, dim }: { s: Shape; w: number; h: number; px: number; dim?: boolean }) {
-  const sw = STROKE * px;
-  let d = '';
-  let ellipse: { cx: number; cy: number; rx: number; ry: number } | null = null;
-  if (s.t === 'pen') {
-    d = s.p.map(([x, y], i) => `${i ? 'L' : 'M'}${(x * w).toFixed(1)} ${(y * h).toFixed(1)}`).join(' ');
-  } else if (s.t === 'ellipse') {
-    ellipse = {
-      cx: ((s.a[0] + s.b[0]) / 2) * w, cy: ((s.a[1] + s.b[1]) / 2) * h,
-      rx: (Math.abs(s.a[0] - s.b[0]) / 2) * w, ry: (Math.abs(s.a[1] - s.b[1]) / 2) * h,
-    };
-  } else {
-    const [x1, y1, x2, y2] = [s.a[0] * w, s.a[1] * h, s.b[0] * w, s.b[1] * h];
-    const ang = Math.atan2(y2 - y1, x2 - x1);
-    const head = ARROW_HEAD * px;
-    const wing = (sign: number) =>
-      `${(x2 - head * Math.cos(ang + sign * 0.5)).toFixed(1)} ${(y2 - head * Math.sin(ang + sign * 0.5)).toFixed(1)}`;
-    d = `M${x1.toFixed(1)} ${y1.toFixed(1)} L${x2.toFixed(1)} ${y2.toFixed(1)} M${wing(1)} L${x2.toFixed(1)} ${y2.toFixed(1)} L${wing(-1)}`;
-  }
-  const stroke = (color: string, width: number) => ({
-    fill: 'none', stroke: color, strokeWidth: width, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const,
-  });
-  const draw = (color: string, width: number) =>
-    ellipse ? <ellipse {...ellipse} {...stroke(color, width)} /> : <path d={d} {...stroke(color, width)} />;
+  const g = geometry(s, w, h, px);
+  const draw = (color: string, width: number) => {
+    const stroke = { fill: 'none', stroke: color, strokeWidth: width, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
+    return g.kind === 'ellipse'
+      ? <ellipse cx={g.cx} cy={g.cy} rx={g.rx} ry={g.ry} {...stroke} />
+      : <path d={g.d} {...stroke} />;
+  };
   return (
     <g opacity={dim ? 0.3 : 1}>
-      {draw('rgba(0,0,0,0.4)', sw * 2.2)}
-      {draw(s.c, sw)}
+      {draw(HALO_COLOR, STROKE * px * HALO)}
+      {draw(s.c, STROKE * px)}
     </g>
   );
 }
-const isTyping = (t: EventTarget | null) =>
-  t instanceof HTMLElement && !!t.closest('input, textarea, select, [contenteditable="true"]');
 
 /**
  * Full-screen review. Keyboard on desktop (arrows, F/Space, Esc, +/−/0, N);

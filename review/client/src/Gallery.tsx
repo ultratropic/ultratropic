@@ -11,6 +11,7 @@ import CopyLink from './CopyLink';
 import Logo from './Logo';
 import { useNoZoom } from './useNoZoom';
 import { downloadOne, downloadZip } from './download';
+import type { ProjectNote } from './retouchSheet';
 import { talentFromFilename } from '../../shared/names';
 
 export interface GalleryImg extends Img {
@@ -150,7 +151,8 @@ export default function Gallery({
   const holdUpload = useRef(false);
   const [selectedBy, setSelectedBy] = useState<Record<string, string[]>>({});
   const [sharing, setSharing] = useState<string | null>(null);
-  const [dl, setDl] = useState<{ done: number; total: number; label: string; error?: string } | null>(null);
+  const [dl, setDl] = useState<{ done: number; total: number; label: string; error?: string; doneText?: string } | null>(null);
+  const [sheetResolved, setSheetResolved] = useState(false);
   const dlAbort = useRef<AbortController | null>(null);
   /** Phones: the sidebar lives behind this full-screen menu. */
   const [menuOpen, setMenuOpen] = useState(false);
@@ -577,6 +579,36 @@ export default function Gallery({
     setImages((list) => list.map((x) => (x.id === img.id ? { ...x, ...patch } : x)));
   };
 
+  /** Owner: the retouch sheet for the photos with notes in the current view. */
+  const sheetFrames = visible.filter((i) => (i.notes ?? 0) > 0 && (sheetResolved || (i.notesOpen ?? 0) > 0));
+  const startSheet = async (format: 'pdf' | 'zip') => {
+    if (dl && !dl.error && dl.done < dl.total) return;
+    const controller = new AbortController();
+    dlAbort.current = controller;
+    setDl({ done: 0, total: sheetFrames.length, label: 'retouch sheet' });
+    try {
+      // Loaded on demand: the PDF library is big and most visits never need it.
+      const [{ makeRetouchSheet }, { notes }] = await Promise.all([
+        import('./retouchSheet'),
+        api<{ notes: ProjectNote[] }>(`/api/admin/projects/${data.project.id}/notes`),
+      ]);
+      const n = await makeRetouchSheet({
+        format,
+        project: data.project.name,
+        frames: sheetFrames.map((i) => ({ id: i.id, filename: i.filename, preview: i.preview, album: data.albums[i.album]?.name ?? 'Photos' })),
+        notes,
+        includeResolved: sheetResolved,
+        onProgress: (done, total) => setDl((d) => d && { ...d, done, total }),
+        signal: controller.signal,
+      });
+      setDl((d) => d && { ...d, done: d.total, doneText: `Retouch sheet ready · ${n} ${n === 1 ? 'photo' : 'photos'}` });
+      setTimeout(() => setDl((d) => (d && d.done >= d.total && !d.error ? null : d)), 3000);
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') setDl(null);
+      else setDl((d) => d && { ...d, error: (err as Error).message });
+    }
+  };
+
   const downloadFrame = (img: { filename: string; preview: string }) => {
     downloadOne(img).catch((err) =>
       setDl({ done: 0, total: 1, label: img.filename, error: (err as Error).message }));
@@ -802,6 +834,26 @@ export default function Gallery({
                   Scripts → Import Review Selects and pick the file you just downloaded.</p>
               </div>
             )}
+          </>
+        )}
+
+        {admin && notesCount > 0 && (
+          <>
+            <label title="Each photo with its marks drawn on and its notes numbered beside it">
+              Retouch sheet · {sheetFrames.length} {sheetFrames.length === 1 ? 'photo' : 'photos'}
+            </label>
+            <div className="export-row">
+              <button className="export-btn" disabled={sheetFrames.length === 0 || (!!dl && !dl.error && dl.done < dl.total)}
+                title="One page per photo: the photo with its marks, notes beside it"
+                onClick={() => void startSheet('pdf')}>PDF</button>
+              <button className="export-btn" disabled={sheetFrames.length === 0 || (!!dl && !dl.error && dl.done < dl.total)}
+                title="Each photo as a JPEG with its marks drawn on, plus a text file of the notes"
+                onClick={() => void startSheet('zip')}>Marked JPEGs</button>
+            </div>
+            <label className="radio setting" style={{ marginTop: -10 }}>
+              <input type="checkbox" checked={sheetResolved} onChange={(e) => setSheetResolved(e.target.checked)} />
+              <span>Include resolved notes</span>
+            </label>
           </>
         )}
 
@@ -1126,14 +1178,14 @@ export default function Gallery({
       {dl && (
         <div className="dl-toast" role="status">
           {dl.error ? (
-            <span>Download failed: {dl.error}</span>
+            <span>{dl.label === 'retouch sheet' ? 'Retouch sheet' : 'Download'} failed: {dl.error}</span>
           ) : dl.done < dl.total ? (
             <>
               <span>Preparing {dl.label} · {dl.done} / {dl.total}</span>
               <div className="dl-bar"><div style={{ width: `${Math.round((dl.done / Math.max(dl.total, 1)) * 100)}%` }} /></div>
             </>
           ) : (
-            <span>Downloaded {dl.total} {dl.total === 1 ? 'photo' : 'photos'}</span>
+            <span>{dl.doneText ?? `Downloaded ${dl.total} ${dl.total === 1 ? 'photo' : 'photos'}`}</span>
           )}
           {dl.error || dl.done >= dl.total ? (
             <button className="text-btn" onClick={() => setDl(null)}>Dismiss</button>
