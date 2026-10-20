@@ -15,12 +15,21 @@ const app = new Hono<{ Bindings: Env; Variables: Vars }>();
  * never sent as a referrer to another site; browsers must not guess content
  * types; and this host is HTTPS-only.
  */
+/**
+ * Content Security Policy: the page may only run scripts, open workers and
+ * make requests to this site itself — so even if something slipped past the
+ * escaping (a note, a name, a link), no outside script could load or run.
+ * Inline styles stay allowed: React sets them, and they can't run code.
+ * The same policy is declared for static files in client/public/_headers.
+ */
+const CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
+
 app.use('*', async (c, next) => {
   await next();
   // Responses from the asset store or cache can have immutable headers.
   c.res = new Response(c.res.body, c.res);
   c.res.headers.set('X-Frame-Options', 'DENY');
-  c.res.headers.set('Content-Security-Policy', "frame-ancestors 'none'");
+  c.res.headers.set('Content-Security-Policy', CSP);
   c.res.headers.set('Referrer-Policy', 'same-origin');
   c.res.headers.set('X-Content-Type-Options', 'nosniff');
   c.res.headers.set('Strict-Transport-Security', 'max-age=31536000');
