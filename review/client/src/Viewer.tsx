@@ -175,9 +175,17 @@ export default function Viewer({
   const notes = notesFor && notesFor.imageId === img?.id ? notesFor.list : null;
   const [notesError, setNotesError] = useState('');
   const [activeNote, setActiveNote] = useState<string | null>(null);
-  const [work, setWork] = useState<Work>(() => (img ? loadWork(workScope, img.id) : NO_WORK));
-  const workRef = useRef(work);
-  workRef.current = work;
+  // The work and the photo it belongs to travel together, so it can only ever be
+  // shown, kept or saved against that photo — never the one you've moved to.
+  const [held, setHeld] = useState<{ imageId: string | null; work: Work }>(() =>
+    ({ imageId: img?.id ?? null, work: img ? loadWork(workScope, img.id) : NO_WORK }));
+  const work = held.imageId === img?.id ? held.work : NO_WORK;
+  const setWork = (u: Work | ((w: Work) => Work)) =>
+    setHeld((h) => ({ imageId: h.imageId, work: typeof u === 'function' ? u(h.work) : u }));
+  const heldRef = useRef(held);
+  heldRef.current = held;
+  /** The unfinished work for one photo, if that's what's held. */
+  const workOf = (imageId: string) => (heldRef.current.imageId === imageId ? heldRef.current.work : NO_WORK);
   const draft = work.pin;
   const setDraft = (u: Pin | null | ((d: Pin | null) => Pin | null)) =>
     setWork((w) => ({ ...w, pin: typeof u === 'function' ? u(w.pin) : u }));
@@ -253,7 +261,7 @@ export default function Viewer({
     panRef.current = { x: 0, y: 0 };
     setZoomState(1);
     setPanState({ x: 0, y: 0 });
-    setWork(img ? loadWork(workScope, img.id) : NO_WORK);
+    setHeld({ imageId: img?.id ?? null, work: img ? loadWork(workScope, img.id) : NO_WORK });
     setActiveNote(null);
     liveRef.current = null;
     setLive(null);
@@ -261,8 +269,8 @@ export default function Viewer({
 
   // Every change to unfinished work is kept in the browser at once, under its photo.
   useEffect(() => {
-    if (imgIdRef.current) storeWork(workScope, imgIdRef.current, work);
-  }, [work, workScope]);
+    if (held.imageId) storeWork(workScope, held.imageId, held.work);
+  }, [held, workScope]);
 
   // Trackpad pinch arrives as ctrl+wheel; a plain wheel pans once zoomed in.
   // Listened to natively: React's wheel listener is passive and can't stop the page.
@@ -327,7 +335,7 @@ export default function Viewer({
       if (!input || inFlight.current.has(key)) continue;
       inFlight.current.add(key);
       storeWork(workScope, imageId, strip(loadWork(workScope, imageId), part));
-      if (imgIdRef.current === imageId) setWork((cur) => strip(cur, part));
+      setHeld((h) => (h.imageId === imageId ? { imageId, work: strip(h.work, part) } : h));
       api.add(imageId, input, { keepalive })
         .then((list) => applyRef.current(imageId, list))
         .catch((err) => {
@@ -339,7 +347,7 @@ export default function Viewer({
             : part === 'pin' ? { ...back, pin: w.pin, text: w.text }
               : part === 'general' ? { ...back, general: w.general } : { ...back, reply: w.reply };
           storeWork(workScope, imageId, restored);
-          if (imgIdRef.current === imageId) setWork(restored);
+          setHeld((h) => (h.imageId === imageId ? { imageId, work: restored } : h));
         })
         .finally(() => inFlight.current.delete(key));
     }
@@ -348,12 +356,12 @@ export default function Viewer({
   // Leaving a photo (next, previous, close, back gesture) saves its unfinished work.
   useEffect(() => {
     const imageId = img?.id;
-    return () => { if (imageId) saveWork(imageId, workRef.current); };
+    return () => { if (imageId) saveWork(imageId, workOf(imageId)); };
   }, [img?.id, saveWork]);
 
   // So does closing or reloading the tab: keepalive lets the request outlive the page.
   useEffect(() => {
-    const onHide = () => { if (imgIdRef.current) saveWork(imgIdRef.current, workRef.current, true); };
+    const onHide = () => { const id = heldRef.current.imageId; if (id) saveWork(id, heldRef.current.work, true); };
     window.addEventListener('pagehide', onHide);
     return () => window.removeEventListener('pagehide', onHide);
   }, [saveWork]);
@@ -486,7 +494,7 @@ export default function Viewer({
     setDraft((d) => {
       if (!d?.shapes?.length) return d;
       const shapes = d.shapes.slice(0, -1);
-      if (!shapes.length) return workRef.current.text.trim() ? { x: d.x, y: d.y } : null;
+      if (!shapes.length) return heldRef.current.work.text.trim() ? { x: d.x, y: d.y } : null;
       const [x, y] = anchorOf(shapes[0]!);
       return { x, y, shapes };
     });
@@ -806,7 +814,7 @@ export default function Viewer({
               try {
                 apply(imageId, await notesApi.add(imageId, input));
                 // Saved: clear it from wherever it now lives (on screen, or kept for that photo).
-                if (imgIdRef.current === imageId) setWork((w) => strip(w, part));
+                if (heldRef.current.imageId === imageId) setHeld((h) => (h.imageId === imageId ? { imageId, work: strip(h.work, part) } : h));
                 else storeWork(workScope, imageId, strip(loadWork(workScope, imageId), part));
               } finally {
                 inFlight.current.delete(key);
