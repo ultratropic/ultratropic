@@ -327,8 +327,9 @@ export default function Gallery({
     type R = { notes: Note[] };
     return {
       list: (imageId) => api<R>(`${base}/images/${imageId}/notes`).then((r) => r.notes),
-      add: (imageId, input) =>
-        api<R>(`${base}/images/${imageId}/notes`, { method: 'POST', body: JSON.stringify(input) }).then((r) => r.notes),
+      add: (imageId, input, opts) =>
+        api<R>(`${base}/images/${imageId}/notes`, { method: 'POST', body: JSON.stringify(input), keepalive: opts?.keepalive })
+          .then((r) => r.notes),
       resolve: (noteId, resolved) =>
         api<R>(`${base}/notes/${noteId}/resolve`, { method: 'POST', body: JSON.stringify({ resolved }) }).then((r) => r.notes),
       remove: (noteId) => api<R>(`${base}/notes/${noteId}`, { method: 'DELETE' }).then((r) => r.notes),
@@ -1137,7 +1138,7 @@ export default function Gallery({
                     </button>
                     <button className="text-btn danger" onClick={async () => {
                       const n = images.filter((x) => x.album === i).length;
-                      if (!window.confirm(`Delete album "${album.name}" and its ${n} images? This cannot be undone.`)) return;
+                      if (!window.confirm(`Delete album "${album.name}" and its ${n} images, with their selects and notes? This cannot be undone.`)) return;
                       await api(`/api/admin/albums/${album.id}`, { method: 'DELETE' });
                       void loadGallery();
                     }}>Delete</button>
@@ -1167,7 +1168,7 @@ export default function Gallery({
                 showNames={admin && filter.kind === 'dup'}
                 caption={casting ? (img) => ({ title: talentName(img), sub: img.info }) : undefined}
                 onDelete={admin && filter.kind === 'dup' ? (img) => {
-                  if (window.confirm(`Delete ${img.filename}? This cannot be undone.`)) void deleteImage(img.id);
+                  if (window.confirm(`Delete ${img.filename}, with its selects and notes? This cannot be undone.`)) void deleteImage(img.id);
                 } : undefined}
               />
             </section>
@@ -1215,6 +1216,7 @@ export default function Gallery({
           talent={casting ? (img) => ({ name: talentName(img), link: img.link, info: img.info }) : undefined}
           onEditDetails={admin && casting ? editDetails : undefined}
           notesApi={notesApi}
+          workScope={base}
           onNotesChanged={onNotesChanged}
           canModerate={admin}
           onDownload={canDownload ? downloadFrame : undefined}

@@ -36,7 +36,8 @@ export interface NoteInput { x?: number; y?: number; body: string; parentId?: st
 
 export interface NotesApi {
   list: (imageId: string) => Promise<Note[]>;
-  add: (imageId: string, input: NoteInput) => Promise<Note[]>;
+  /** keepalive: let the request finish even if the page is closing. */
+  add: (imageId: string, input: NoteInput, opts?: { keepalive?: boolean }) => Promise<Note[]>;
   resolve: (noteId: string, resolved: boolean) => Promise<Note[]>;
   remove: (noteId: string) => Promise<Note[]>;
 }
@@ -56,8 +57,14 @@ function when(ms: number): string {
   return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-/** A textarea that sends on ⌘/Ctrl-Enter and cancels on Escape. */
-function Composer({ placeholder, label, onSubmit, onCancel, autoFocus, allowEmpty = false }: {
+/**
+ * A textarea that sends on ⌘/Ctrl-Enter. Its text is owned by the viewer, which
+ * keeps it with the photo (and in the browser) so nothing typed is ever lost:
+ * Escape only leaves the box; Cancel is the one way to throw words away.
+ */
+function Composer({ value, onChange, placeholder, label, onSubmit, onCancel, autoFocus, allowEmpty = false }: {
+  value: string;
+  onChange: (v: string) => void;
   placeholder: string;
   label: string;
   onSubmit: (body: string) => Promise<void>;
@@ -66,20 +73,18 @@ function Composer({ placeholder, label, onSubmit, onCancel, autoFocus, allowEmpt
   /** A drawing can be saved without words. */
   allowEmpty?: boolean;
 }) {
-  const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const ref = useRef<HTMLTextAreaElement>(null);
   useEffect(() => { if (autoFocus) ref.current?.focus(); }, [autoFocus]);
   const send = async () => {
-    if ((!text.trim() && !allowEmpty) || busy) return;
+    if ((!value.trim() && !allowEmpty) || busy) return;
     setBusy(true);
     setError('');
     try {
-      await onSubmit(text.trim());
-      setText('');
+      await onSubmit(value.trim());
     } catch (err) {
-      setError((err as Error).message || 'Could not save that note.');
+      setError(`${(err as Error).message || 'Could not save'} — kept here, try again.`);
     } finally {
       setBusy(false);
     }
@@ -89,16 +94,16 @@ function Composer({ placeholder, label, onSubmit, onCancel, autoFocus, allowEmpt
       <textarea
         ref={ref}
         rows={2}
-        value={text}
+        value={value}
         placeholder={placeholder}
-        onChange={(e) => setText(e.target.value)}
+        onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void send(); }
-          if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onCancel?.(); (e.target as HTMLElement).blur(); }
+          if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); (e.target as HTMLElement).blur(); }
         }}
       />
       <div className="note-composer-actions">
-        <button className="small" disabled={(!text.trim() && !allowEmpty) || busy} onClick={() => void send()}>{busy ? 'Saving…' : label}</button>
+        <button className="small" disabled={(!value.trim() && !allowEmpty) || busy} onClick={() => void send()}>{busy ? 'Saving…' : label}</button>
         {onCancel && <button className="text-btn" onClick={onCancel}>Cancel</button>}
         {error && <span className="err">{error}</span>}
       </div>
@@ -114,6 +119,12 @@ export default function NotesPanel({
   draft,
   draftNumber,
   onDraftCancel,
+  draftText,
+  onDraftText,
+  general,
+  onGeneral,
+  reply,
+  onReply,
   onAdd,
   onResolve,
   onDelete,
@@ -134,6 +145,15 @@ export default function NotesPanel({
   draft: { x: number; y: number; shapes?: Shape[] } | null;
   draftNumber: number;
   onDraftCancel: () => void;
+  /** Words for the pin or drawing in progress. */
+  draftText: string;
+  onDraftText: (v: string) => void;
+  /** The general-note box. */
+  general: string;
+  onGeneral: (v: string) => void;
+  /** The reply being written, if any: which note, and the words so far. */
+  reply: { to: string; text: string } | null;
+  onReply: (r: { to: string; text: string } | null) => void;
   onAdd: (input: NoteInput) => Promise<void>;
   onResolve: (id: string, resolved: boolean) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
@@ -148,7 +168,6 @@ export default function NotesPanel({
   onUndo: () => void;
 }) {
   const [showResolved, setShowResolved] = useState(false);
-  const [replyTo, setReplyTo] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
   const numbers = pinNumbers(notes ?? []);
@@ -216,6 +235,8 @@ export default function NotesPanel({
             </div>
             <Composer
               key={draft.shapes?.length ? 'drawing' : `${draft.x},${draft.y}`}
+              value={draftText}
+              onChange={onDraftText}
               autoFocus={!draft.shapes?.length}
               allowEmpty={!!draft.shapes?.length}
               label="Add note"
@@ -267,7 +288,16 @@ export default function NotesPanel({
               </div>
             ))}
             <div className="note-actions" onClick={(e) => e.stopPropagation()}>
-              <button className="text-btn" onClick={() => setReplyTo(replyTo === n.id ? null : n.id)}>Reply</button>
+              {/* One reply at a time; a half-written one is never dropped for another. */}
+              <button
+                className="text-btn"
+                disabled={!!reply && reply.to !== n.id && !!reply.text.trim()}
+                title={reply && reply.to !== n.id && reply.text.trim() ? 'Finish or cancel your other reply first' : undefined}
+                onClick={() => {
+                  if (reply?.to === n.id) { if (!reply.text.trim()) onReply(null); }
+                  else onReply({ to: n.id, text: '' });
+                }}
+              >Reply</button>
               <button className="text-btn" onClick={() => void onResolve(n.id, !n.resolvedAt)}>
                 {n.resolvedAt ? 'Reopen' : 'Resolve'}
               </button>
@@ -277,14 +307,16 @@ export default function NotesPanel({
                 }}>Delete</button>
               )}
             </div>
-            {replyTo === n.id && (
+            {reply?.to === n.id && (
               <div onClick={(e) => e.stopPropagation()}>
                 <Composer
                   autoFocus
+                  value={reply.text}
+                  onChange={(text) => onReply({ to: n.id, text })}
                   label="Reply"
                   placeholder="Reply…"
-                  onSubmit={async (body) => { await onAdd({ body, parentId: n.id }); setReplyTo(null); }}
-                  onCancel={() => setReplyTo(null)}
+                  onSubmit={(body) => onAdd({ body, parentId: n.id })}
+                  onCancel={() => onReply(null)}
                 />
               </div>
             )}
@@ -295,7 +327,7 @@ export default function NotesPanel({
       {/* One thing at a time: while a pin or drawing waits for its words, its box is the only one. */}
       {!draft && (
         <div className="notes-foot">
-          <Composer label="Add" placeholder="General note for this photo…" onSubmit={(body) => onAdd({ body })} />
+          <Composer value={general} onChange={onGeneral} label="Add" placeholder="General note for this photo…" onSubmit={(body) => onAdd({ body })} />
         </div>
       )}
     </aside>

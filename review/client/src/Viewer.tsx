@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Img } from './Grid';
-import NotesPanel, { pinNumbers, COLORS, type Note, type NotesApi, type Shape, type Tool } from './NotesPanel';
+import NotesPanel, { pinNumbers, COLORS, type Note, type NoteInput, type NotesApi, type Shape, type Tool } from './NotesPanel';
 import { anchorOf, geometry, HALO, HALO_COLOR, STROKE } from './marks';
+import { ApiError } from './api';
 
 const SWIPE_DISTANCE = 60;   // px: a deliberate horizontal drag
 const SWIPE_VELOCITY = 0.45; // px/ms: or a quick flick
@@ -16,6 +17,43 @@ const NOTES_KEY = 'review-notes-open';
 const MIN_MARK = 6;      // px: anything smaller was a slip, not a mark
 const isTyping = (t: EventTarget | null) =>
   t instanceof HTMLElement && !!t.closest('input, textarea, select, [contenteditable="true"]');
+
+type Pin = { x: number; y: number; shapes?: Shape[] };
+/**
+ * Everything unfinished on one photo: a placed pin or drawing and its words, a
+ * half-typed general note, a half-typed reply. Kept in the browser as it's
+ * typed and saved to the server on leaving the photo, so no work is ever lost
+ * and none can end up on the wrong photo.
+ */
+interface Work { pin: Pin | null; text: string; general: string; reply: { to: string; text: string } | null }
+const NO_WORK: Work = { pin: null, text: '', general: '', reply: null };
+const isEmpty = (w: Work) => !w.pin && !w.text.trim() && !w.general.trim() && !w.reply?.text.trim();
+type Part = 'pin' | 'general' | 'reply';
+const strip = (w: Work, part: Part): Work =>
+  part === 'pin' ? { ...w, pin: null, text: '' } : part === 'general' ? { ...w, general: '' } : { ...w, reply: null };
+/** The note a part of unfinished work would become; null if it isn't ready (a bare pin, empty boxes). */
+function noteFrom(w: Work, part: Part): NoteInput | null {
+  if (part === 'pin') {
+    if (!w.pin || (!w.text.trim() && !w.pin.shapes?.length)) return null;
+    return { x: w.pin.x, y: w.pin.y, body: w.text.trim(), shapes: w.pin.shapes?.length ? w.pin.shapes : undefined };
+  }
+  if (part === 'general') return w.general.trim() ? { body: w.general.trim() } : null;
+  return w.reply?.text.trim() ? { parentId: w.reply.to, body: w.reply.text.trim() } : null;
+}
+const PARTS: Part[] = ['pin', 'general', 'reply'];
+const workKey = (scope: string, imageId: string) => `review-work:${scope}:${imageId}`;
+function loadWork(scope: string, imageId: string): Work {
+  try {
+    const raw = localStorage.getItem(workKey(scope, imageId));
+    return raw ? { ...NO_WORK, ...(JSON.parse(raw) as Partial<Work>) } : NO_WORK;
+  } catch { return NO_WORK; }
+}
+function storeWork(scope: string, imageId: string, w: Work) {
+  try {
+    if (isEmpty(w)) localStorage.removeItem(workKey(scope, imageId));
+    else localStorage.setItem(workKey(scope, imageId), JSON.stringify(w));
+  } catch { /* storage full or blocked: the in-memory copy still saves on leave */ }
+}
 
 /**
  * One mark as SVG, in photo pixels (the SVG's viewBox is the photo's size).
@@ -66,6 +104,7 @@ export default function Viewer({
   notesApi,
   onNotesChanged,
   canModerate = false,
+  workScope = 'review',
 }: {
   images: Img[];
   index: number;
@@ -91,6 +130,8 @@ export default function Viewer({
   onNotesChanged?: (imageId: string, all: number, open: number) => void;
   /** The owner may delete anyone's notes. */
   canModerate?: boolean;
+  /** Keeps unfinished notes for one project apart from another's in the browser. */
+  workScope?: string;
 }) {
   const img = images[index];
   const [dragX, setDragX] = useState(0);
@@ -134,9 +175,12 @@ export default function Viewer({
   const notes = notesFor && notesFor.imageId === img?.id ? notesFor.list : null;
   const [notesError, setNotesError] = useState('');
   const [activeNote, setActiveNote] = useState<string | null>(null);
-  const [draft, setDraft] = useState<{ x: number; y: number; shapes?: Shape[] } | null>(null);
-  const draftRef = useRef(draft);
-  draftRef.current = draft;
+  const [work, setWork] = useState<Work>(() => (img ? loadWork(workScope, img.id) : NO_WORK));
+  const workRef = useRef(work);
+  workRef.current = work;
+  const draft = work.pin;
+  const setDraft = (u: Pin | null | ((d: Pin | null) => Pin | null)) =>
+    setWork((w) => ({ ...w, pin: typeof u === 'function' ? u(w.pin) : u }));
   const imgIdRef = useRef(img?.id);
   imgIdRef.current = img?.id;
   const [touch, setTouch] = useState(false);
@@ -144,17 +188,9 @@ export default function Viewer({
   const [color, setColor] = useState<string>(COLORS[0]);
   const drawing = notesOpen && !!notesApi && tool !== 'pin';
 
-  /** A pin or drawing not yet saved: moving on would lose it, so ask first. */
-  const keepDraft = () =>
-    !!draftRef.current && !window.confirm(
-      draftRef.current.shapes?.length ? 'Discard the drawing you haven\'t saved?' : 'Discard the note you haven\'t saved?',
-    );
-  const go = (i: number) => {
-    const target = Math.max(0, Math.min(images.length - 1, i));
-    if (target === index || keepDraft()) return;
-    onIndex(target);
-  };
-  const close = () => { if (!keepDraft()) onClose(); };
+  // Unfinished work saves itself on the way out (see the leave effect below).
+  const go = (i: number) => onIndex(Math.max(0, Math.min(images.length - 1, i)));
+  const close = onClose;
 
   // Measured straight away (so the first paint is already the right size) and
   // again whenever the stage changes: window resize, notes panel in or out.
@@ -217,11 +253,16 @@ export default function Viewer({
     panRef.current = { x: 0, y: 0 };
     setZoomState(1);
     setPanState({ x: 0, y: 0 });
-    setDraft(null);
+    setWork(img ? loadWork(workScope, img.id) : NO_WORK);
     setActiveNote(null);
     liveRef.current = null;
     setLive(null);
-  }, [img?.id]);
+  }, [img?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Every change to unfinished work is kept in the browser at once, under its photo.
+  useEffect(() => {
+    if (imgIdRef.current) storeWork(workScope, imgIdRef.current, work);
+  }, [work, workScope]);
 
   // Trackpad pinch arrives as ctrl+wheel; a plain wheel pans once zoomed in.
   // Listened to natively: React's wheel listener is passive and can't stop the page.
@@ -262,10 +303,60 @@ export default function Viewer({
     setNotesOpen((v) => {
       const next = open ?? !v;
       try { sessionStorage.setItem(NOTES_KEY, next ? '1' : '0'); } catch { /* private mode */ }
-      if (!next) setDraft(null);
-      return next;
+      return next; // closing the panel only hides unfinished work; it's kept
     });
   }, []);
+
+  /** Note parts on their way to the server, as "imageId:part": never sent twice. */
+  const inFlight = useRef(new Set<string>());
+  const notesApiRef = useRef(notesApi);
+  notesApiRef.current = notesApi;
+  const applyRef = useRef<(imageId: string, list: Note[]) => void>(() => {});
+
+  /**
+   * Send whatever unfinished work on a photo is ready to be a note. Each part
+   * leaves the browser's copy as it's sent and goes back if the send fails, so
+   * it is offered again next time; a bare pin with no words just stays put.
+   */
+  const saveWork = useCallback((imageId: string, w: Work, keepalive = false) => {
+    const api = notesApiRef.current;
+    if (!api) return;
+    for (const part of PARTS) {
+      const input = noteFrom(w, part);
+      const key = `${imageId}:${part}`;
+      if (!input || inFlight.current.has(key)) continue;
+      inFlight.current.add(key);
+      storeWork(workScope, imageId, strip(loadWork(workScope, imageId), part));
+      if (imgIdRef.current === imageId) setWork((cur) => strip(cur, part));
+      api.add(imageId, input, { keepalive })
+        .then((list) => applyRef.current(imageId, list))
+        .catch((err) => {
+          // The photo itself is gone (deleted meanwhile): nowhere left to save to.
+          if (err instanceof ApiError && err.status === 404) return;
+          const back = loadWork(workScope, imageId);
+          // Only into an empty slot: never over something typed since.
+          const restored = noteFrom(back, part) || (part === 'pin' && back.pin) ? back
+            : part === 'pin' ? { ...back, pin: w.pin, text: w.text }
+              : part === 'general' ? { ...back, general: w.general } : { ...back, reply: w.reply };
+          storeWork(workScope, imageId, restored);
+          if (imgIdRef.current === imageId) setWork(restored);
+        })
+        .finally(() => inFlight.current.delete(key));
+    }
+  }, [workScope]);
+
+  // Leaving a photo (next, previous, close, back gesture) saves its unfinished work.
+  useEffect(() => {
+    const imageId = img?.id;
+    return () => { if (imageId) saveWork(imageId, workRef.current); };
+  }, [img?.id, saveWork]);
+
+  // So does closing or reloading the tab: keepalive lets the request outlive the page.
+  useEffect(() => {
+    const onHide = () => { if (imgIdRef.current) saveWork(imgIdRef.current, workRef.current, true); };
+    window.addEventListener('pagehide', onHide);
+    return () => window.removeEventListener('pagehide', onHide);
+  }, [saveWork]);
 
   /** A changed list for a photo, from any note action. Counts update even if you've moved on. */
   const apply = (imageId: string, list: Note[]) => {
@@ -273,6 +364,7 @@ export default function Viewer({
     setNotesFor((cur) => (cur && imageId !== imgIdRef.current && cur.imageId === imgIdRef.current ? cur : { imageId, list }));
     report(imageId, list);
   };
+  applyRef.current = apply;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -282,10 +374,8 @@ export default function Viewer({
         undoMark();
         return;
       }
-      if (e.key === 'Escape') {
-        if (draft) setDraft(null);
-        else close();
-      } else if (e.key === 'ArrowRight') go(index + 1);
+      if (e.key === 'Escape') close(); // unfinished work saves itself
+      else if (e.key === 'ArrowRight') go(index + 1);
       else if (e.key === 'ArrowLeft') go(index - 1);
       else if (e.key === '+' || e.key === '=') zoomAt(zoomRef.current * ZOOM_STEP);
       else if (e.key === '-' || e.key === '_') zoomAt(zoomRef.current / ZOOM_STEP);
@@ -396,7 +486,7 @@ export default function Viewer({
     setDraft((d) => {
       if (!d?.shapes?.length) return d;
       const shapes = d.shapes.slice(0, -1);
-      if (!shapes.length) return null;
+      if (!shapes.length) return workRef.current.text.trim() ? { x: d.x, y: d.y } : null;
       const [x, y] = anchorOf(shapes[0]!);
       return { x, y, shapes };
     });
@@ -518,7 +608,7 @@ export default function Viewer({
       suppressClick.current = performance.now();
       const p = pointOnPhoto(e.clientX, e.clientY);
       if (p && !draft?.shapes?.length) {
-        setDraft(p);
+        setDraft(p); // a new spot for the pin; any words typed for it stay
         setActiveNote(null);
       }
       return;
@@ -700,13 +790,27 @@ export default function Viewer({
             onActivate={setActiveNote}
             draft={draft}
             draftNumber={numbers.size + 1}
-            onDraftCancel={() => setDraft(null)}
+            onDraftCancel={() => setWork((w) => strip(w, 'pin'))}
+            draftText={work.text}
+            onDraftText={(text) => setWork((w) => ({ ...w, text }))}
+            general={work.general}
+            onGeneral={(general) => setWork((w) => ({ ...w, general }))}
+            reply={work.reply}
+            onReply={(reply) => setWork((w) => ({ ...w, reply }))}
             onAdd={async (input) => {
               const imageId = img.id;
-              const list = await notesApi.add(imageId, input);
-              apply(imageId, list);
-              // Only clear the draft that was just saved, not one started on another photo since.
-              if (input.x !== undefined && imgIdRef.current === imageId) setDraft(null);
+              const part: Part = input.parentId ? 'reply' : input.x !== undefined ? 'pin' : 'general';
+              const key = `${imageId}:${part}`;
+              if (inFlight.current.has(key)) return;
+              inFlight.current.add(key);
+              try {
+                apply(imageId, await notesApi.add(imageId, input));
+                // Saved: clear it from wherever it now lives (on screen, or kept for that photo).
+                if (imgIdRef.current === imageId) setWork((w) => strip(w, part));
+                else storeWork(workScope, imageId, strip(loadWork(workScope, imageId), part));
+              } finally {
+                inFlight.current.delete(key);
+              }
             }}
             onResolve={async (id, resolved) => {
               const imageId = img.id;
@@ -721,11 +825,7 @@ export default function Viewer({
             onClose={() => toggleNotes(false)}
             touch={touch}
             tool={tool}
-            onTool={(t) => {
-              setTool(t);
-              // A lone pin waiting for text doesn't carry over into drawing.
-              if (t !== 'pin' && draft && !draft.shapes?.length) setDraft(null);
-            }}
+            onTool={setTool}
             color={color}
             onColor={setColor}
             onUndo={undoMark}
