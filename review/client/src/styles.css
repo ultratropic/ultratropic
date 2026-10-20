@@ -362,14 +362,96 @@ button.ghost.danger:hover { border-color: #c0392b; }
   border: none; border-radius: 3px;
 }
 .viewer-close:hover { color: var(--fg); }
+/* Photo and, when open, the notes panel: side by side, or stacked on a phone. */
+.viewer-body { flex: 1; min-height: 0; display: flex; }
 .viewer-stage {
-  position: relative; flex: 1; min-height: 0;
+  position: relative; flex: 1; min-width: 0; min-height: 0; overflow: hidden;
   display: flex; align-items: center; justify-content: center;
   padding: 0 16px 16px; user-select: none; -webkit-user-select: none;
 }
-.viewer-stage img {
-  max-width: 100%; max-height: 100%; object-fit: contain; cursor: default;
-  will-change: transform; -webkit-user-drag: none;
+/* Laid out at the fitted size; zoom and pan are a transform on top. */
+.viewer-frame { position: relative; flex-shrink: 0; will-change: transform; transform-origin: 50% 50%; }
+.viewer-frame img {
+  display: block; width: 100%; height: 100%; cursor: default; -webkit-user-drag: none;
+}
+.viewer-stage.zoomed .viewer-frame img { cursor: grab; }
+.viewer-stage.annotating .viewer-frame img { cursor: crosshair; }
+
+/* zoom controls */
+.viewer-zoom { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.viewer-zoom button {
+  min-width: 28px; height: 28px; padding: 0 6px; font-size: 15px; line-height: 1;
+  background: transparent; color: var(--muted); border: 1px solid transparent; border-radius: 3px;
+}
+.viewer-zoom button:hover:not(:disabled) { color: var(--fg); border-color: var(--line); }
+.viewer-zoom .zoom-level { font-size: 12px; min-width: 46px; font-variant-numeric: tabular-nums; }
+.viewer-notes-btn {
+  flex-shrink: 0; padding: 5px 11px; font-size: 13px;
+  background: transparent; color: var(--fg); border: 1px solid var(--line); border-radius: 3px;
+}
+.viewer-notes-btn.on { border-color: var(--fg); }
+
+/* note pins on the photo: constant size at any zoom (counter-scaled inline) */
+.pin {
+  position: absolute; z-index: 2; display: flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; padding: 0; border-radius: 50%;
+  font-size: 12px; font-weight: 600; line-height: 1; cursor: pointer;
+  background: #f5c400; color: #111; border: 2px solid #fff;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.45);
+}
+.pin.active { background: #fff; outline: 2px solid #f5c400; }
+.pin.resolved { background: #9a9a9a; color: #fff; }
+.pin.draft { background: #fff; color: #111; pointer-events: none; animation: pin-in 0.15s ease-out; }
+@keyframes pin-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* notes panel */
+.notes-panel {
+  width: 340px; flex-shrink: 0; display: flex; flex-direction: column; min-height: 0;
+  border-left: 1px solid var(--line); background: var(--bg);
+  touch-action: pan-y; /* the viewer blocks touch scrolling; the list needs it */
+}
+.notes-head { display: flex; align-items: center; gap: 10px; padding: 0 12px 10px 16px; }
+.notes-head strong { font-weight: 500; }
+.notes-close {
+  margin-left: auto; width: 28px; height: 28px; padding: 0; font-size: 20px; line-height: 1;
+  background: transparent; color: var(--muted); border: none;
+}
+.notes-list { flex: 1; min-height: 0; overflow-y: auto; padding: 0 16px; overscroll-behavior: contain; }
+.notes-empty { margin: 8px 0 16px; }
+.note { padding: 12px 0; border-top: 1px solid var(--line); cursor: pointer; }
+.note.active { background: color-mix(in srgb, var(--fg) 5%, transparent); margin: 0 -16px; padding: 12px 16px; }
+.note.resolved .note-body { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line); }
+.note.draft { cursor: default; }
+.note-meta { display: flex; align-items: center; gap: 8px; font-size: 13px; flex-wrap: wrap; }
+.note-author { font-weight: 500; }
+.pin-badge {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 20px; height: 20px; border-radius: 50%; font-size: 11px; font-weight: 600;
+  background: #f5c400; color: #111;
+}
+.note.resolved .pin-badge { background: #9a9a9a; color: #fff; }
+.pin-badge.general { background: var(--line); color: var(--muted); }
+.note-body { margin: 6px 0 4px; font-size: 14px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.note-reply { margin: 8px 0 0 28px; padding-left: 10px; border-left: 2px solid var(--line); }
+.note-reply .note-body { font-size: 13px; }
+.note-actions { display: flex; gap: 14px; margin-top: 4px; }
+.note-composer textarea {
+  width: 100%; resize: vertical; min-height: 44px; padding: 8px 10px;
+  font: inherit; font-size: 14px; color: var(--fg); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 3px;
+}
+.note-composer textarea:focus { outline: none; border-color: var(--accent); }
+.note-composer-actions { display: flex; align-items: center; gap: 12px; margin-top: 6px; }
+.note-composer-actions .err { margin: 0; }
+button.small { padding: 5px 12px; font-size: 13px; }
+.notes-foot { padding: 10px 16px 12px; border-top: 1px solid var(--line); }
+@media (max-width: 760px) {
+  .viewer-body { flex-direction: column; }
+  .viewer.with-notes .notes-panel { width: auto; height: 46%; border-left: none; border-top: 1px solid var(--line); }
+  .notes-head { padding-top: 8px; }
+  .note-composer textarea { font-size: 16px; } /* no iOS zoom-in on focus */
+  .viewer-zoom { display: none; } /* pinch instead */
+  .viewer.with-notes .viewer-pickers { display: none; }
 }
 .viewer-pulse {
   position: absolute; left: 50%; top: 50%; pointer-events: none;
@@ -401,6 +483,13 @@ button.ghost.danger:hover { border-color: #c0392b; }
 }
 .download-btn .side-name { flex: 1; }
 .download-btn svg { flex-shrink: 0; }
+/* notes on a tile: top-left, always visible (open count, or a tick when all resolved) */
+.note-badge {
+  position: absolute; left: 6px; top: 6px; display: flex; align-items: center; gap: 4px;
+  padding: 2px 6px; border-radius: 3px; font-size: 12px; line-height: 1.3; pointer-events: none;
+  background: #f5c400; color: #111;
+}
+.note-badge.done { background: rgba(0, 0, 0, 0.45); color: #fff; }
 .tile-download {
   position: absolute; left: 6px; bottom: 6px; display: flex; align-items: center; justify-content: center;
   width: 28px; height: 24px; padding: 0; border: none; border-radius: 3px; cursor: pointer;

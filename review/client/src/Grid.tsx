@@ -13,6 +13,9 @@ export interface Img {
   name?: string | null;
   link?: string | null;
   info?: string | null;
+  /** Retouch notes on this frame: all, and still open. */
+  notes?: number;
+  notesOpen?: number;
 }
 
 interface Row {
@@ -231,6 +234,17 @@ export default function Grid({
                 >
                   Delete
                 </button>
+              )}
+              {(img.notes ?? 0) > 0 && (
+                <span
+                  className={`note-badge${img.notesOpen ? '' : ' done'}`}
+                  title={img.notesOpen ? `${img.notesOpen} open ${img.notesOpen === 1 ? 'note' : 'notes'}` : 'All notes resolved'}
+                >
+                  <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+                    <path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+                  </svg>
+                  {img.notesOpen ? img.notesOpen : '✓'}
+                </span>
               )}
               {onToggle && (
                 <HeartBadge img={img} onToggle={onToggle} />

@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { ulid } from '../lib/ids';
 import { readAdmin } from '../lib/auth';
 import { buildGallery } from '../lib/gallery';
+import { listNotes, addNote, noteImage, resolveNote, deleteNote } from '../lib/notes';
 import type { Env, Vars } from '../types';
 
 const sel = new Hono<{ Bindings: Env; Variables: Vars }>();
@@ -127,6 +128,52 @@ sel.delete('/projects/:pid/selections/:imageId', async (c) => {
     .bind(imageId)
     .first<{ n: number }>();
   return c.json({ selected: false, count: count?.n ?? 0 });
+});
+
+// ---- retouch notes (owner) ----
+
+sel.get('/projects/:pid/images/:imageId/notes', async (c) => {
+  const projectId = c.req.param('pid');
+  const reviewerId = await adminReviewer(c, projectId);
+  if (!reviewerId) return c.json({ error: 'project not found' }, 404);
+  return c.json({ notes: await listNotes(c.env, c.req.param('imageId'), reviewerId, true) });
+});
+
+sel.post('/projects/:pid/images/:imageId/notes', async (c) => {
+  const projectId = c.req.param('pid');
+  const imageId = c.req.param('imageId');
+  const reviewerId = await adminReviewer(c, projectId);
+  if (!reviewerId) return c.json({ error: 'project not found' }, 404);
+  const image = await c.env.DB.prepare(`SELECT id FROM images WHERE id = ? AND project_id = ?`)
+    .bind(imageId, projectId)
+    .first();
+  if (!image) return c.json({ error: 'image not in project' }, 404);
+  const res = await addNote(c.env, projectId, imageId, reviewerId, await c.req.json().catch(() => ({})));
+  if ('error' in res) return c.json(res, 400);
+  return c.json({ id: res.id, notes: await listNotes(c.env, imageId, reviewerId, true) }, 201);
+});
+
+sel.post('/projects/:pid/notes/:noteId/resolve', async (c) => {
+  const projectId = c.req.param('pid');
+  const reviewerId = await adminReviewer(c, projectId);
+  if (!reviewerId) return c.json({ error: 'project not found' }, 404);
+  const note = await noteImage(c.env, c.req.param('noteId'), projectId);
+  if (!note) return c.json({ error: 'note not found' }, 404);
+  const { resolved } = await c.req.json<{ resolved?: boolean }>().catch(() => ({ resolved: undefined }));
+  if (typeof resolved !== 'boolean') return c.json({ error: 'resolved: boolean required' }, 400);
+  await resolveNote(c.env, c.req.param('noteId'), reviewerId, resolved);
+  return c.json({ notes: await listNotes(c.env, note.image_id, reviewerId, true) });
+});
+
+/** The owner can remove anyone's note. */
+sel.delete('/projects/:pid/notes/:noteId', async (c) => {
+  const projectId = c.req.param('pid');
+  const reviewerId = await adminReviewer(c, projectId);
+  if (!reviewerId) return c.json({ error: 'project not found' }, 404);
+  const note = await noteImage(c.env, c.req.param('noteId'), projectId);
+  if (!note) return c.json({ error: 'note not found' }, 404);
+  await deleteNote(c.env, c.req.param('noteId'));
+  return c.json({ notes: await listNotes(c.env, note.image_id, reviewerId, true) });
 });
 
 export default sel;

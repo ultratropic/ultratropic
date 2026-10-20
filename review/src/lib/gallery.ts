@@ -31,7 +31,7 @@ export async function buildGallery(env: Env, o: Options) {
     }>();
   if (!project) return null;
 
-  const [albumsRes, imagesRes, selectionsRes, reviewersRes] = await Promise.all([
+  const [albumsRes, imagesRes, selectionsRes, reviewersRes, notesRes] = await Promise.all([
     env.DB.prepare(
       `SELECT id, name, slug, share_token, password_hash IS NOT NULL AS has_password
          FROM albums WHERE project_id = ? ORDER BY seq`,
@@ -59,6 +59,12 @@ export async function buildGallery(env: Env, o: Options) {
     )
       .bind(o.projectId)
       .all<{ id: string; display_name: string; last_seen_at: number; hidden: number }>(),
+    // Top-level notes only: replies don't add a pin.
+    env.DB.prepare(
+      `SELECT image_id, reviewer_id, resolved_at FROM notes WHERE project_id = ? AND parent_id IS NULL`,
+    )
+      .bind(o.projectId)
+      .all<{ image_id: string; reviewer_id: string; resolved_at: number | null }>(),
   ]);
 
   const allowed = o.albumIds ? new Set(o.albumIds) : null;
@@ -82,6 +88,15 @@ export async function buildGallery(env: Env, o: Options) {
     (selectionsByReviewer[s.reviewer_id] ??= []).push(s.image_id);
     selectCount.set(s.image_id, (selectCount.get(s.image_id) ?? 0) + 1);
     if (s.reviewer_id === o.reviewerId) mine.add(s.image_id);
+  }
+
+  // Notes per frame, under the same visibility rule as selections.
+  const noteCount = new Map<string, number>();
+  const openNotes = new Map<string, number>();
+  for (const n of notesRes.results) {
+    if (!visibleIds.has(n.image_id) || hiddenFromMe.has(n.reviewer_id)) continue;
+    noteCount.set(n.image_id, (noteCount.get(n.image_id) ?? 0) + 1);
+    if (!n.resolved_at) openNotes.set(n.image_id, (openNotes.get(n.image_id) ?? 0) + 1);
   }
 
   // Possible duplicates: two frames that would resolve to the same RAW, or the
@@ -133,7 +148,7 @@ export async function buildGallery(env: Env, o: Options) {
       }))
       .filter((r) => r.isMe || r.count > 0 || o.admin),
     selectionsByReviewer,
-    fields: ['id', 'filename', 'thumb', 'preview', 'w', 'h', 'album', 'selects', 'mine', 'dup', 'name', 'link', 'info'],
+    fields: ['id', 'filename', 'thumb', 'preview', 'w', 'h', 'album', 'selects', 'mine', 'dup', 'name', 'link', 'info', 'notes', 'notesOpen'],
     rows: images.map((i) => [
       i.id,
       i.original_filename,
@@ -148,6 +163,8 @@ export async function buildGallery(env: Env, o: Options) {
       i.talent_name,
       i.link,
       i.info,
+      noteCount.get(i.id) ?? 0,
+      openNotes.get(i.id) ?? 0,
     ]),
   };
 }

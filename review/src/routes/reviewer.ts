@@ -2,6 +2,7 @@ import { Hono, type Context } from 'hono';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import { ulid, normalizeEmail } from '../lib/ids';
 import { verifyPassword, sign, unsign } from '../lib/crypto';
+import { listNotes, addNote, noteImage, resolveNote, deleteNote } from '../lib/notes';
 import {
   issueReviewerCookie,
   readReviewerFor,
@@ -321,6 +322,61 @@ export function reviewerRoutes(resolve: Resolve) {
 
     const count = await visibleCount(c, imageId, gate.s.rid);
     return c.json({ selected: false, count: count?.n ?? 0 });
+  });
+
+  // ---- retouch notes (reviewers) ----
+
+  /** The note, if this reviewer may see it: its photo is in scope and its author isn't hidden from them. */
+  async function visibleNote(c: Ctx, t: Target, rid: string, noteId: string) {
+    const note = await noteImage(c.env, noteId, t.project.id);
+    if (!note || !(await imageInScope(c, t, note.image_id))) return null;
+    if (note.reviewer_id !== rid) {
+      const author = await c.env.DB.prepare(`SELECT hidden FROM reviewers WHERE id = ?`)
+        .bind(note.reviewer_id)
+        .first<{ hidden: number }>();
+      if (!author || author.hidden) return null;
+    }
+    return note;
+  }
+
+  r.get('/:key/images/:imageId/notes', async (c) => {
+    const gate = await requireAccess(c);
+    if (gate instanceof Response) return gate;
+    const imageId = c.req.param('imageId');
+    if (!(await imageInScope(c, gate.t, imageId))) return c.json({ error: 'not found' }, 404);
+    return c.json({ notes: await listNotes(c.env, imageId, gate.s.rid, false) });
+  });
+
+  r.post('/:key/images/:imageId/notes', async (c) => {
+    const gate = await requireAccess(c);
+    if (gate instanceof Response) return gate;
+    const imageId = c.req.param('imageId');
+    if (!(await imageInScope(c, gate.t, imageId))) return c.json({ error: 'not found' }, 404);
+    const res = await addNote(c.env, gate.t.project.id, imageId, gate.s.rid, await c.req.json().catch(() => ({})));
+    if ('error' in res) return c.json(res, 400);
+    return c.json({ id: res.id, notes: await listNotes(c.env, imageId, gate.s.rid, false) }, 201);
+  });
+
+  r.post('/:key/notes/:noteId/resolve', async (c) => {
+    const gate = await requireAccess(c);
+    if (gate instanceof Response) return gate;
+    const note = await visibleNote(c, gate.t, gate.s.rid, c.req.param('noteId'));
+    if (!note) return c.json({ error: 'not found' }, 404);
+    const { resolved } = await c.req.json<{ resolved?: boolean }>().catch(() => ({ resolved: undefined }));
+    if (typeof resolved !== 'boolean') return c.json({ error: 'resolved: boolean required' }, 400);
+    await resolveNote(c.env, c.req.param('noteId'), gate.s.rid, resolved);
+    return c.json({ notes: await listNotes(c.env, note.image_id, gate.s.rid, false) });
+  });
+
+  /** Reviewers can only remove their own notes. */
+  r.delete('/:key/notes/:noteId', async (c) => {
+    const gate = await requireAccess(c);
+    if (gate instanceof Response) return gate;
+    const note = await visibleNote(c, gate.t, gate.s.rid, c.req.param('noteId'));
+    if (!note) return c.json({ error: 'not found' }, 404);
+    if (note.reviewer_id !== gate.s.rid) return c.json({ error: 'only the author can delete a note' }, 403);
+    await deleteNote(c.env, c.req.param('noteId'));
+    return c.json({ notes: await listNotes(c.env, note.image_id, gate.s.rid, false) });
   });
 
   return r;

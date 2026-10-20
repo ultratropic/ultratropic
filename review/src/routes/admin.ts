@@ -163,6 +163,7 @@ admin.delete('/projects/:id', async (c) => {
 
   await c.env.DB.batch([
     c.env.DB.prepare(`DELETE FROM selections WHERE project_id = ?`).bind(projectId),
+    c.env.DB.prepare(`DELETE FROM notes      WHERE project_id = ?`).bind(projectId),
     c.env.DB.prepare(`DELETE FROM images     WHERE project_id = ?`).bind(projectId),
     c.env.DB.prepare(`DELETE FROM reviewers  WHERE project_id = ?`).bind(projectId),
     c.env.DB.prepare(`DELETE FROM albums     WHERE project_id = ?`).bind(projectId),
@@ -190,6 +191,9 @@ admin.delete('/reviewers/:id', async (c) => {
     .first<{ n: number }>();
   await c.env.DB.batch([
     c.env.DB.prepare(`DELETE FROM selections WHERE reviewer_id = ?`).bind(r.id),
+    // Their notes go, and so do replies others wrote under them.
+    c.env.DB.prepare(`DELETE FROM notes WHERE parent_id IN (SELECT id FROM notes WHERE reviewer_id = ?)`).bind(r.id),
+    c.env.DB.prepare(`DELETE FROM notes WHERE reviewer_id = ?`).bind(r.id),
     c.env.DB.prepare(`DELETE FROM reviewers WHERE id = ?`).bind(r.id),
   ]);
   return c.json({ removed: r.display_name, selections: removed?.n ?? 0 });
@@ -219,6 +223,11 @@ admin.post('/projects/:pid/reset', async (c) => {
   ]);
   await c.env.DB.batch([
     c.env.DB.prepare(`DELETE FROM selections WHERE project_id = ?`).bind(projectId),
+    // Notes from the reviewers being removed go with them; the owner's stay.
+    c.env.DB.prepare(
+      `DELETE FROM notes WHERE project_id = ?1 AND (reviewer_id IN (SELECT id FROM reviewers WHERE project_id = ?1 AND email_norm != '__admin__')
+         OR parent_id IN (SELECT id FROM notes WHERE reviewer_id IN (SELECT id FROM reviewers WHERE project_id = ?1 AND email_norm != '__admin__')))`,
+    ).bind(projectId),
     c.env.DB.prepare(`DELETE FROM reviewers WHERE project_id = ? AND email_norm != '__admin__'`).bind(projectId),
   ]);
   return c.json({ selectionsCleared: sel?.n ?? 0, reviewersRemoved: rev?.n ?? 0 });
@@ -321,6 +330,7 @@ admin.delete('/images/:id', async (c) => {
   await c.env.BUCKET.delete([img.thumb_key, img.preview_key]);
   await c.env.DB.batch([
     c.env.DB.prepare(`DELETE FROM selections WHERE image_id = ?`).bind(img.id),
+    c.env.DB.prepare(`DELETE FROM notes WHERE image_id = ?`).bind(img.id),
     c.env.DB.prepare(`DELETE FROM images WHERE id = ?`).bind(img.id),
     c.env.DB.prepare(`UPDATE projects SET cover_image_id = NULL WHERE cover_image_id = ?`).bind(img.id),
   ]);
@@ -353,6 +363,7 @@ admin.delete('/albums/:id', async (c) => {
       `UPDATE projects SET cover_image_id = NULL
         WHERE cover_image_id IN (SELECT id FROM images WHERE album_id = ?)`,
     ).bind(albumId),
+    c.env.DB.prepare(`DELETE FROM notes WHERE image_id IN (SELECT id FROM images WHERE album_id = ?)`).bind(albumId),
     c.env.DB.prepare(`DELETE FROM images WHERE album_id = ?`).bind(albumId),
     c.env.DB.prepare(`DELETE FROM albums WHERE id = ?`).bind(albumId),
   ]);

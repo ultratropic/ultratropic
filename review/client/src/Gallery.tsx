@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { api, ApiError } from './api';
 import Grid, { type Img } from './Grid';
 import Viewer from './Viewer';
+import type { Note, NotesApi } from './NotesPanel';
 import Uploader from './Uploader';
 import { selectedByEveryone, ACTIVE_SHARE, MIN_ACTIVE } from '../../shared/everyone';
 import SharePanel, { type ShareState } from './SharePanel';
@@ -47,6 +48,8 @@ export type Filter =
   | { kind: 'agreed' }
   /** Selected by every active reviewer (see shared/everyone.ts). */
   | { kind: 'everyone' }
+  /** Frames with retouch notes. */
+  | { kind: 'notes' }
   | { kind: 'dup' }
   | { kind: 'reviewer'; id: string };
 
@@ -60,6 +63,7 @@ function viewFromUrl(): { filter: Filter; stats: boolean } {
     case 'all': return { filter: { kind: 'any' }, stats: false };
     case '2plus': return { filter: { kind: 'agreed' }, stats: false };
     case 'everyone': return { filter: { kind: 'everyone' }, stats: false };
+    case 'notes': return { filter: { kind: 'notes' }, stats: false };
     case 'duplicates': return { filter: { kind: 'dup' }, stats: false };
     case 'stats': return { filter: { kind: 'all' }, stats: true };
     default: return { filter: { kind: 'all' }, stats: false };
@@ -73,6 +77,7 @@ function viewToQuery(filter: Filter, stats: boolean): string {
     case 'any': return '?show=all';
     case 'agreed': return '?show=2plus';
     case 'everyone': return '?show=everyone';
+    case 'notes': return '?show=notes';
     case 'dup': return '?show=duplicates';
     case 'reviewer': return `?person=${filter.id}`;
     default: return '';
@@ -196,6 +201,8 @@ export default function Gallery({
         name: (r[10] as string | null) ?? null,
         link: (r[11] as string | null) ?? null,
         info: (r[12] as string | null) ?? null,
+        notes: (r[13] as number) ?? 0,
+        notesOpen: (r[14] as number) ?? 0,
       })),
     );
     setSelectedBy(d.selectionsByReviewer ?? {});
@@ -313,6 +320,26 @@ export default function Gallery({
    * State is read from a ref updated in the same tick, never from inside a
    * setState updater, which runs later and would see yesterday's value.
    */
+  /** Retouch notes for the viewer; the same paths work for the owner and reviewers. */
+  const notesApi = useMemo<NotesApi>(() => {
+    type R = { notes: Note[] };
+    return {
+      list: (imageId) => api<R>(`${base}/images/${imageId}/notes`).then((r) => r.notes),
+      add: (imageId, input) =>
+        api<R>(`${base}/images/${imageId}/notes`, { method: 'POST', body: JSON.stringify(input) }).then((r) => r.notes),
+      resolve: (noteId, resolved) =>
+        api<R>(`${base}/notes/${noteId}/resolve`, { method: 'POST', body: JSON.stringify({ resolved }) }).then((r) => r.notes),
+      remove: (noteId) => api<R>(`${base}/notes/${noteId}`, { method: 'DELETE' }).then((r) => r.notes),
+    };
+  }, [base]);
+
+  const onNotesChanged = useCallback((imageId: string, all: number, open: number) => {
+    const patch = (img: GalleryImg) => (img.id === imageId ? { ...img, notes: all, notesOpen: open } : img);
+    if (!imagesRef.current.some((img) => img.id === imageId && (img.notes !== all || img.notesOpen !== open))) return;
+    imagesRef.current = imagesRef.current.map(patch);
+    setImages((list) => list.map(patch));
+  }, []);
+
   const inflight = useRef(new Map<string, { chain: Promise<unknown>; seq: number }>());
   const toggle = useCallback(
     (id: string) => {
@@ -372,6 +399,7 @@ export default function Gallery({
       case 'any': return images.filter((i) => i.selects > 0);
       case 'agreed': return images.filter((i) => i.selects >= 2);
       case 'everyone': return images.filter((i) => everyone.ids.has(i.id));
+      case 'notes': return images.filter((i) => (i.notes ?? 0) > 0);
       case 'dup': return images.filter((i) => i.dup);
       case 'reviewer': {
         const ids = new Set(selectedBy[filter.id] ?? []);
@@ -450,6 +478,8 @@ export default function Gallery({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (openIndex === null) return;
+      // Typing a note: those keys are letters, not shortcuts.
+      if ((e.target as HTMLElement | null)?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
       if (e.key === ' ' || e.key.toLowerCase() === 'f') {
         const img = visible[openIndex];
         if (img) {
@@ -477,6 +507,7 @@ export default function Gallery({
   const anyCount = images.filter((i) => i.selects > 0).length;
   const agreedCount = images.filter((i) => i.selects >= 2).length;
   const everyoneCount = everyone.ids.size;
+  const notesCount = images.filter((i) => (i.notes ?? 0) > 0).length;
   const dupCount = images.filter((i) => i.dup).length;
 
   // Export follows the current filter: filtered to Alice, you export Alice's.
@@ -499,6 +530,7 @@ export default function Gallery({
       : filter.kind === 'any' ? 'all selects'
         : filter.kind === 'agreed' ? AGREED
         : filter.kind === 'everyone' ? "everyone's selects"
+        : filter.kind === 'notes' ? 'photos with notes'
         : filter.kind === 'dup' ? 'possible duplicates'
           : filter.kind === 'reviewer' ? `${reviewers.find((r) => r.id === filter.id)?.name ?? 'their'}'s selects`
             : 'all photos';
@@ -603,6 +635,7 @@ export default function Gallery({
           : filter.kind === 'any' ? 'All selects'
             : filter.kind === 'agreed' ? AGREED
             : filter.kind === 'everyone' ? 'Everyone'
+            : filter.kind === 'notes' ? 'Notes'
             : filter.kind === 'dup' ? 'Possible duplicates'
               : filter.kind === 'reviewer' ? (reviewers.find((r) => r.id === filter.id)?.name ?? 'Selects')
                 : 'All photos';
@@ -676,6 +709,7 @@ export default function Gallery({
             { key: 'any', label: 'All selects', n: anyCount },
             { key: 'agreed', label: AGREED, n: agreedCount, title: AGREED_WORDS },
             { key: 'everyone', label: 'Everyone', n: everyoneCount, title: EVERYONE_WORDS },
+            { key: 'notes', label: 'Notes', n: notesCount, title: 'Photos with retouch notes' },
           ] as const).map((f) => (
             <button
               key={f.key}
@@ -868,8 +902,8 @@ export default function Gallery({
                 const first = window.confirm(
                   `Reset "${data.project.name}"?\n\n` +
                   `• ${picks} ${picks === 1 ? 'select' : 'selects'} will be cleared, including yours\n` +
-                  `• ${others} ${others === 1 ? 'reviewer' : 'reviewers'} will be removed (you stay)\n\n` +
-                  `Photos, albums, client links and settings are kept. This cannot be undone.`,
+                  `• ${others} ${others === 1 ? 'reviewer' : 'reviewers'} will be removed (you stay), with their notes\n\n` +
+                  `Photos, albums, your notes, client links and settings are kept. This cannot be undone.`,
                 );
                 if (!first) return;
                 const typed = window.prompt('To confirm, type RESET');
@@ -937,7 +971,7 @@ export default function Gallery({
             }}
             onRemove={async (r) => {
               const ok = window.confirm(
-                `Remove ${r.name}?\n\nTheir ${r.count} ${r.count === 1 ? 'select is' : 'selects are'} deleted permanently. ` +
+                `Remove ${r.name}?\n\nTheir ${r.count} ${r.count === 1 ? 'select is' : 'selects are'} deleted permanently, along with their notes. ` +
                 `If they open the link again they start from scratch — to keep them out, change the password.`,
               );
               if (!ok) return;
@@ -1007,6 +1041,7 @@ export default function Gallery({
           <p className="sub" style={{ padding: '24px 0' }}>
             {filter.kind === 'dup' ? 'No duplicates.'
               : filter.kind === 'agreed' ? 'No photo has been selected by two people yet.'
+              : filter.kind === 'notes' ? 'No notes yet. Open a photo and choose Notes to add one.'
               : filter.kind === 'everyone'
                 ? everyone.active.length < MIN_ACTIVE
                   ? `Needs at least ${MIN_ACTIVE} people who've each selected ${ACTIVE_SHARE * 100}% or more of the photos.`
@@ -1127,6 +1162,9 @@ export default function Gallery({
           albumName={data.albums[visible[openIndex]!.album]?.name}
           talent={casting ? (img) => ({ name: talentName(img), link: img.link, info: img.info }) : undefined}
           onEditDetails={admin && casting ? editDetails : undefined}
+          notesApi={notesApi}
+          onNotesChanged={onNotesChanged}
+          canModerate={admin}
           onDownload={canDownload ? downloadFrame : undefined}
           pickers={(() => {
             // You first, then everyone else in the order they joined.
