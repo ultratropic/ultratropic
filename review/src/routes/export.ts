@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { readAdmin } from '../lib/auth';
 import { slugify } from '../lib/ids';
-import { rawMatch, talentFromFilename } from '../../shared/names';
+import { rawMatch, talentGroupName, talentLabel } from '../../shared/names';
 import { selectedByEveryone } from '../../shared/everyone';
 import { listProjectNotes, notesLine } from '../lib/notes';
 import type { Env, Vars } from '../types';
@@ -86,19 +86,39 @@ exp.get('/projects/:pid/export', async (c) => {
   const albumName = new Map(albums.results.map((a) => [a.id, a.name]));
   if (albumParam && !albumName.has(albumParam)) return c.json({ error: 'album not in project' }, 404);
 
+  // A casting shortlist is about people: who, which agency, where to see more.
+  const casting = project.kind === 'casting';
+  const talent = (img: { talent_name: string | null; original_filename: string }) =>
+    talentLabel(img.talent_name, img.original_filename);
+
+  /**
+   * What a select is a vote for: a photo in a shoot, a model in a casting (any
+   * of their photos in that album) — the same units the gallery's filters use,
+   * so "2+" and "Everyone" export exactly what they show.
+   */
+  const unitOf = (img: (typeof images.results)[number]) => {
+    const name = casting ? talentGroupName(img.talent_name, img.original_filename) : null;
+    return name ? `${img.album_id}:${name}` : img.id;
+  };
+  const unitById = new Map(images.results.map((img) => [img.id, unitOf(img)]));
+
   const pickers = new Map<string, string[]>();
   for (const s of selections.results) {
-    (pickers.get(s.image_id) ?? pickers.set(s.image_id, []).get(s.image_id)!).push(s.reviewer_id);
+    const u = unitById.get(s.image_id);
+    if (!u) continue;
+    const list = pickers.get(u) ?? pickers.set(u, []).get(u)!;
+    if (!list.includes(s.reviewer_id)) list.push(s.reviewer_id);
   }
 
   const picksByReviewer: Record<string, string[]> = {};
-  for (const s of selections.results) (picksByReviewer[s.reviewer_id] ??= []).push(s.image_id);
-  const everyone = everyoneOnly ? selectedByEveryone(picksByReviewer, images.results.length).ids : null;
+  for (const [u, who] of pickers) for (const rid of who) (picksByReviewer[rid] ??= []).push(u);
+  const everyone = everyoneOnly ? selectedByEveryone(picksByReviewer, new Set(unitById.values()).size).ids : null;
 
   const chosen = images.results.filter((img) => {
     if (albumParam && img.album_id !== albumParam) return false;
-    if (everyone && !everyone.has(img.id)) return false;
-    const who = pickers.get(img.id);
+    const u = unitById.get(img.id)!;
+    if (everyone && !everyone.has(u)) return false;
+    const who = pickers.get(u);
     if (!who || who.length < minPickers) return false;
     return reviewerParam === 'all' || who.includes(reviewerParam);
   });
@@ -107,11 +127,6 @@ exp.get('/projects/:pid/export', async (c) => {
   const where = albumParam ? `-${slugify(albumName.get(albumParam)!)}` : '';
   const atLeast = everyoneOnly ? '-everyone' : minPickers > 1 ? `-${minPickers}plus` : '';
   const filename = `${slugify(project.name)}-selects-${who}${atLeast}${where}.${format}`;
-
-  // A casting shortlist is about people: who, which agency, where to see more.
-  const casting = project.kind === 'casting';
-  const talent = (img: { talent_name: string | null; original_filename: string }) =>
-    img.talent_name || talentFromFilename(img.original_filename);
 
   // Retouch notes per frame, appended to the CSV as one readable column.
   const notesBy = new Map<string, Parameters<typeof notesLine>[0]>();
@@ -123,12 +138,19 @@ exp.get('/projects/:pid/export', async (c) => {
   const notesFor = (id: string) => csvField(safeName(notesLine(notesBy.get(id) ?? [])));
 
   let body: string;
+  // One row per model in a casting (their first photo's details, all their files).
+  const people = new Map<string, Array<(typeof chosen)[number]>>();
+  if (casting) for (const img of chosen) (people.get(unitById.get(img.id)!) ?? people.set(unitById.get(img.id)!, []).get(unitById.get(img.id)!)!).push(img);
+
   if (casting && format === 'txt') {
-    body = chosen.map((i) => `${talent(i)} — ${albumName.get(i.album_id) ?? ''}`).join('\n') + (chosen.length ? '\n' : '');
+    const rows = [...people.values()].map(([img]) => `${talent(img!)} — ${albumName.get(img!.album_id) ?? ''}`);
+    body = rows.join('\n') + (rows.length ? '\n' : '');
   } else if (casting) {
-    const lines = ['name,agency,portfolio,status,select_count,selected_by,filename,notes'];
-    for (const img of chosen) {
-      const names = (pickers.get(img.id) ?? []).map((id) => safeName(reviewerName.get(id) ?? '?'));
+    const lines = ['name,agency,portfolio,status,select_count,selected_by,photos,filenames,notes'];
+    for (const [u, photos] of people) {
+      const img = photos[0]!;
+      const names = (pickers.get(u) ?? []).map((id) => safeName(reviewerName.get(id) ?? '?'));
+      const notes = photos.map((p) => notesLine(notesBy.get(p.id) ?? [])).filter(Boolean).join(' | ');
       lines.push([
         csvField(safeName(talent(img))),
         csvField(safeName(albumName.get(img.album_id) ?? '')),
@@ -136,8 +158,9 @@ exp.get('/projects/:pid/export', async (c) => {
         csvField(safeName(img.info ?? '')),
         String(names.length),
         csvField(names.join('; ')),
-        csvField(img.original_filename),
-        notesFor(img.id),
+        String(photos.length),
+        csvField(photos.map((p) => p.original_filename).join('; ')),
+        csvField(safeName(notes)),
       ].join(','));
     }
     body = lines.join('\r\n') + '\r\n';

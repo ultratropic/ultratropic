@@ -12,7 +12,7 @@ import Logo from './Logo';
 import { useNoZoom } from './useNoZoom';
 import { downloadOne, downloadZip } from './download';
 import type { ProjectNote } from './retouchSheet';
-import { talentFromFilename } from '../../shared/names';
+import { talentGroupName, talentLabel } from '../../shared/names';
 
 export interface GalleryImg extends Img {
   album: number;
@@ -92,7 +92,7 @@ const EVERYONE_WORDS =
   `Selected by everyone — counting only people who've selected at least ${ACTIVE_SHARE * 100}% of the photos`;
 
 /** Who's in a casting photo: the name given, or one made from the filename. */
-const talentName = (img: { name?: string | null; filename: string }) => img.name || talentFromFilename(img.filename);
+const talentName = (img: { name?: string | null; filename: string }) => talentLabel(img.name, img.filename);
 
 const scrollKey = () => `review-scroll:${location.pathname}${location.search}`;
 
@@ -394,35 +394,14 @@ export default function Gallery({
     void loadGallery();
   }, [loadGallery]);
 
-  const everyone = useMemo(() => selectedByEveryone(selectedBy, images.length), [selectedBy, images.length]);
-
-  const byFilter = useMemo(() => {
-    switch (filter.kind) {
-      case 'mine': return images.filter((i) => i.mine);
-      case 'any': return images.filter((i) => i.selects > 0);
-      case 'agreed': return images.filter((i) => i.selects >= 2);
-      case 'everyone': return images.filter((i) => everyone.ids.has(i.id));
-      case 'notes': return images.filter((i) => (i.notes ?? 0) > 0);
-      case 'dup': return images.filter((i) => i.dup);
-      case 'reviewer': {
-        const ids = new Set(selectedBy[filter.id] ?? []);
-        return images.filter((i) => ids.has(i.id));
-      }
-      default: return images;
-    }
-  }, [images, filter, selectedBy, everyone]);
-
   const casting = data?.project.kind === 'casting';
-  // Casting: the name search narrows whatever filter is on.
-  const visible = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!casting || !q) return byFilter;
-    return byFilter.filter((i) => talentName(i).toLowerCase().includes(q));
-  }, [byFilter, casting, query]);
 
   // ---- casting: one tile per model ----
   /** Which model a photo is of, within its album (the same name on two boards stays two tiles). */
-  const personKey = (img: GalleryImg) => `${img.album}:${talentName(img).trim().toLowerCase()}`;
+  const personKey = (img: GalleryImg) => {
+    const name = talentGroupName(img.name, img.filename);
+    return name ? `${img.album}:${name}` : `photo:${img.id}`;
+  };
   /** Every photo of each model, whatever the filter: opening a model shows them all. */
   const peopleByKey = useMemo(() => {
     if (!casting) return null;
@@ -433,6 +412,59 @@ export default function Gallery({
     }
     return m;
   }, [casting, images]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * What a select is a vote for: a photo in a shoot, a model in a casting (any
+   * of their photos). Filters and counts work in these units, so the grid,
+   * "2+", "Everyone" and the numbers beside them always agree.
+   */
+  const unitOf = (img: GalleryImg) => (casting ? personKey(img) : img.id);
+  const unitPicks = useMemo(() => {
+    const byId = new Map(images.map((img) => [img.id, img]));
+    const perReviewer: Record<string, string[]> = {};
+    const pickers = new Map<string, Set<string>>();
+    for (const [rid, ids] of Object.entries(selectedBy)) {
+      const units = new Set<string>();
+      for (const id of ids) {
+        const img = byId.get(id);
+        if (img) units.add(unitOf(img));
+      }
+      perReviewer[rid] = [...units];
+      for (const u of units) (pickers.get(u) ?? pickers.set(u, new Set()).get(u)!).add(rid);
+    }
+    return { perReviewer, pickers };
+  }, [images, selectedBy, casting]); // eslint-disable-line react-hooks/exhaustive-deps
+  const unitCount = peopleByKey ? peopleByKey.size : images.length;
+  const pickerCount = (img: GalleryImg) => (casting ? unitPicks.pickers.get(unitOf(img))?.size ?? 0 : img.selects);
+  const everyone = useMemo(
+    () => selectedByEveryone(unitPicks.perReviewer, unitCount),
+    [unitPicks, unitCount],
+  );
+  /** How many tiles a set of photos makes: models in a casting, photos in a shoot. */
+  const countUnits = (list: GalleryImg[]) => (casting ? new Set(list.map(unitOf)).size : list.length);
+
+  const byFilter = useMemo(() => {
+    switch (filter.kind) {
+      case 'mine': return images.filter((i) => i.mine);
+      case 'any': return images.filter((i) => pickerCount(i) > 0);
+      case 'agreed': return images.filter((i) => pickerCount(i) >= 2);
+      case 'everyone': return images.filter((i) => everyone.ids.has(unitOf(i)));
+      case 'notes': return images.filter((i) => (i.notes ?? 0) > 0);
+      case 'dup': return images.filter((i) => i.dup);
+      case 'reviewer': {
+        const ids = new Set(selectedBy[filter.id] ?? []);
+        return images.filter((i) => ids.has(i.id));
+      }
+      default: return images;
+    }
+  }, [images, filter, selectedBy, everyone, unitPicks]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Casting: the name search narrows whatever filter is on.
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!casting || !q) return byFilter;
+    return byFilter.filter((i) => talentName(i).toLowerCase().includes(q));
+  }, [byFilter, casting, query]);
 
   /**
    * What full screen steps through. A shoot: the photos on screen. A casting:
@@ -478,7 +510,7 @@ export default function Gallery({
     for (const img of images) {
       const t = m.get(img.album) ?? { n: 0, mine: 0 };
       if (casting) {
-        const k = `${img.album}:${talentName(img).trim().toLowerCase()}`;
+        const k = personKey(img);
         const had = seen.get(k);
         if (had === undefined) { t.n++; if (img.mine) t.mine++; }
         else if (!had && img.mine) t.mine++;
@@ -490,7 +522,7 @@ export default function Gallery({
       m.set(img.album, t);
     }
     return m;
-  }, [images, casting]);
+  }, [images, casting]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const indexOf = useMemo(() => {
     const m = new Map<string, number>();
@@ -583,13 +615,15 @@ export default function Gallery({
     );
   }
 
-  const reviewers = data.reviewers.map((r) => ({ ...r, count: selectedBy[r.id]?.length ?? 0 }));
+  // In a casting a person's count is models picked, not photos.
+  const picksOf = (rid: string) => (casting ? unitPicks.perReviewer[rid]?.length : selectedBy[rid]?.length) ?? 0;
+  const reviewers = data.reviewers.map((r) => ({ ...r, count: picksOf(r.id) }));
   const people = reviewers.filter((r) => r.count > 0);
-  const mineCount = images.filter((i) => i.mine).length;
-  const anyCount = images.filter((i) => i.selects > 0).length;
-  const agreedCount = images.filter((i) => i.selects >= 2).length;
+  const mineCount = countUnits(images.filter((i) => i.mine));
+  const anyCount = countUnits(images.filter((i) => pickerCount(i) > 0));
+  const agreedCount = countUnits(images.filter((i) => pickerCount(i) >= 2));
   const everyoneCount = everyone.ids.size;
-  const notesCount = images.filter((i) => (i.notes ?? 0) > 0).length;
+  const notesCount = countUnits(images.filter((i) => (i.notes ?? 0) > 0));
   const dupCount = images.filter((i) => i.dup).length;
 
   // Export follows the current filter: filtered to Alice, you export Alice's.
@@ -602,7 +636,7 @@ export default function Gallery({
       : exportWho === 'all' ? 'All selects'
       : exportWho === data.me.id ? 'My selects'
         : `${reviewers.find((r) => r.id === exportWho)?.name ?? 'Their'}'s selects`;
-  const exportCount = exportAgreed ? agreedCount : exportEveryone ? everyoneCount : exportWho === 'all' ? anyCount : (selectedBy[exportWho]?.length ?? 0);
+  const exportCount = exportAgreed ? agreedCount : exportEveryone ? everyoneCount : exportWho === 'all' ? anyCount : picksOf(exportWho);
   const exportHref = (format: 'csv' | 'txt') =>
     `/api/admin/projects/${data.project.id}/export?format=${format}&reviewer=${exportWho}${exportAgreed ? '&min=2' : ''}${exportEveryone ? '&everyone=1' : ''}`;
 
@@ -751,7 +785,7 @@ export default function Gallery({
             : filter.kind === 'dup' ? 'Possible duplicates'
               : filter.kind === 'reviewer' ? (reviewers.find((r) => r.id === filter.id)?.name ?? 'Selects')
                 : 'All photos';
-  const viewCount = mode === 'browse' ? visible.length : null;
+  const viewCount = mode === 'browse' ? countUnits(visible) : null;
 
   const albumTitle = data.albums.length === 1 && !admin && !data.project.slug ? data.albums[0]!.name : null;
 
@@ -816,7 +850,7 @@ export default function Gallery({
         <label>Show</label>
         <nav style={{ marginBottom: 20 }}>
           {([
-            { key: 'all', label: casting ? 'All talent' : 'All photos', n: peopleByKey ? peopleByKey.size : images.length },
+            { key: 'all', label: casting ? 'All talent' : 'All photos', n: unitCount },
             { key: 'mine', label: 'My selects', n: mineCount },
             { key: 'any', label: 'All selects', n: anyCount },
             { key: 'agreed', label: AGREED, n: agreedCount, title: AGREED_WORDS },
@@ -1096,7 +1130,10 @@ export default function Gallery({
             albums={data.albums}
             images={images}
             reviewers={reviewers}
-            selectedBy={selectedBy}
+            unitOf={(img) => unitOf(img as GalleryImg)}
+            pickersOf={(u) => unitPicks.pickers.get(u)}
+            everyoneUnits={everyone.ids}
+            casting={casting}
             onHide={async (id, hidden) => {
               await api(`/api/admin/reviewers/${id}/hidden`, { method: 'POST', body: JSON.stringify({ hidden }) });
               void loadGallery();

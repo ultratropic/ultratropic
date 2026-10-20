@@ -50,3 +50,23 @@ export function talentFromFilename(filename: string): string {
     .trim()
     .replace(/\b\w/g, (ch) => ch.toUpperCase());
 }
+
+/**
+ * The name photos are grouped under in a casting, or null if this photo should
+ * stand alone. A name set on the photo always counts. One read from the
+ * filename only counts if it looks like a person — two or more words of
+ * letters ("trevor_stewart_02" → "Trevor Stewart") — so camera files like
+ * IMG_001 … IMG_999 don't all collapse into one "Img".
+ */
+export function talentGroupName(talentName: string | null | undefined, filename: string): string | null {
+  if (talentName?.trim()) return talentName.trim().toLowerCase();
+  const derived = talentFromFilename(filename);
+  const words = derived.split(/\s+/).filter((w) => /^\p{L}[\p{L}'.]*$/u.test(w));
+  return words.length >= 2 && words.length === derived.split(/\s+/).length ? derived.toLowerCase() : null;
+}
+
+/** What a casting photo is labelled: its name, a person's name read from the filename, or else the filename itself. */
+export function talentLabel(talentName: string | null | undefined, filename: string): string {
+  if (talentName?.trim()) return talentName.trim();
+  return talentGroupName(null, filename) ? talentFromFilename(filename) : filename.replace(/\.[^.]+$/, '');
+}

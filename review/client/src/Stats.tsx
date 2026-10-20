@@ -13,40 +13,45 @@ function ago(ms?: number): string {
 }
 
 /**
- * Plain counts, no score. "All" means every person who has selected anything —
- * someone who opened the link and picked nothing isn't holding out a consensus.
+ * Plain counts, no score, in the gallery's own units (photos in a shoot, models
+ * in a casting) and with its own "Everyone" rule, so a number here always
+ * matches the filter of the same name.
  */
 export default function Stats({
   albums,
   images,
   reviewers,
-  selectedBy,
+  unitOf,
+  pickersOf,
+  everyoneUnits,
+  casting = false,
   onHide,
   onRemove,
 }: {
   albums: Album[];
   images: Img[];
   reviewers: Reviewer[];
-  selectedBy: Record<string, string[]>;
+  /** What a select counts toward: the photo, or the model it's of. */
+  unitOf: (img: Img) => string;
+  pickersOf: (unit: string) => Set<string> | undefined;
+  /** Units every active reviewer picked (the Everyone filter). */
+  everyoneUnits: Set<string>;
+  casting?: boolean;
   onHide: (id: string, hidden: boolean) => void;
   onRemove: (r: Reviewer) => void;
 }) {
   const active = reviewers.filter((r) => r.count > 0);
-  const pickedBy = new Map<string, Set<string>>();
-  for (const [rid, ids] of Object.entries(selectedBy)) {
-    for (const id of ids) (pickedBy.get(id) ?? pickedBy.set(id, new Set()).get(id)!).add(rid);
-  }
-  const everyone = (id: string) => active.length > 1 && (pickedBy.get(id)?.size ?? 0) === active.length;
 
   const rows = albums.map((a, i) => {
-    const list = images.filter((img) => img.album === i);
+    const units = [...new Set(images.filter((img) => img.album === i).map(unitOf))];
+    const n = (u: string) => pickersOf(u)?.size ?? 0;
     return {
       name: a.name,
-      total: list.length,
-      selected: list.filter((x) => x.selects > 0).length,
-      twoPlus: list.filter((x) => x.selects >= 2).length,
-      all: list.filter((x) => everyone(x.id)).length,
-      per: active.map((r) => list.filter((x) => pickedBy.get(x.id)?.has(r.id)).length),
+      total: units.length,
+      selected: units.filter((u) => n(u) > 0).length,
+      twoPlus: units.filter((u) => n(u) >= 2).length,
+      all: units.filter((u) => everyoneUnits.has(u)).length,
+      per: active.map((r) => units.filter((u) => pickersOf(u)?.has(r.id)).length),
     };
   });
   const sum = (k: 'total' | 'selected' | 'twoPlus' | 'all') => rows.reduce((n, r) => n + r[k], 0);
@@ -95,10 +100,10 @@ export default function Stats({
           <thead>
             <tr>
               <th>Album</th>
-              <th className="num">Images</th>
+              <th className="num">{casting ? 'People' : 'Images'}</th>
               <th className="num">Selected</th>
               <th className="num" title="Picked by at least two people">2+</th>
-              <th className="num" title="Picked by every person who has selected anything">Unanimous</th>
+              <th className="num" title="Picked by every active reviewer, as in the Everyone filter">Everyone</th>
               {active.map((r) => <th key={r.id} className="num">{r.name}</th>)}
             </tr>
           </thead>
