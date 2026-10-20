@@ -1,5 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
 
+/** A mark on the photo; every coordinate is a fraction of its width or height. */
+export type Shape =
+  | { t: 'pen'; c: string; p: Array<[number, number]> }
+  | { t: 'ellipse' | 'arrow'; c: string; a: [number, number]; b: [number, number] };
+
+export type Tool = 'pin' | 'pen' | 'ellipse' | 'arrow';
+
+/** Bright enough to read on skin, sky or black; the first is the default. */
+export const COLORS = ['#ff3b30', '#f5c400', '#34c759', '#0a84ff', '#ffffff'] as const;
+
+const TOOLS: Array<{ key: Tool; label: string; icon: string }> = [
+  { key: 'pin', label: 'Pin a note', icon: 'M8 1.5a4.5 4.5 0 0 0-4.5 4.5c0 3.4 4.5 8.5 4.5 8.5s4.5-5.1 4.5-8.5A4.5 4.5 0 0 0 8 1.5z' },
+  { key: 'pen', label: 'Draw', icon: 'M2.5 13.5l1-3.5 7.5-7.5 2.5 2.5-7.5 7.5-3.5 1z' },
+  { key: 'ellipse', label: 'Circle', icon: 'M8 3c3.6 0 6 2.2 6 5s-2.4 5-6 5-6-2.2-6-5 2.4-5 6-5z' },
+  { key: 'arrow', label: 'Arrow', icon: 'M3 13L13 3M7 3h6v6' },
+];
+
 export interface Note {
   id: string;
   parentId: string | null;
@@ -7,6 +24,7 @@ export interface Note {
   x: number | null;
   y: number | null;
   body: string;
+  shapes: Shape[] | null;
   author: string;
   mine: boolean;
   createdAt: number;
@@ -14,9 +32,11 @@ export interface Note {
   resolvedBy: string | null;
 }
 
+export interface NoteInput { x?: number; y?: number; body: string; parentId?: string; shapes?: Shape[] }
+
 export interface NotesApi {
   list: (imageId: string) => Promise<Note[]>;
-  add: (imageId: string, input: { x?: number; y?: number; body: string; parentId?: string }) => Promise<Note[]>;
+  add: (imageId: string, input: NoteInput) => Promise<Note[]>;
   resolve: (noteId: string, resolved: boolean) => Promise<Note[]>;
   remove: (noteId: string) => Promise<Note[]>;
 }
@@ -37,12 +57,14 @@ function when(ms: number): string {
 }
 
 /** A textarea that sends on ⌘/Ctrl-Enter and cancels on Escape. */
-function Composer({ placeholder, label, onSubmit, onCancel, autoFocus }: {
+function Composer({ placeholder, label, onSubmit, onCancel, autoFocus, allowEmpty = false }: {
   placeholder: string;
   label: string;
   onSubmit: (body: string) => Promise<void>;
   onCancel?: () => void;
   autoFocus?: boolean;
+  /** A drawing can be saved without words. */
+  allowEmpty?: boolean;
 }) {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
@@ -50,7 +72,7 @@ function Composer({ placeholder, label, onSubmit, onCancel, autoFocus }: {
   const ref = useRef<HTMLTextAreaElement>(null);
   useEffect(() => { if (autoFocus) ref.current?.focus(); }, [autoFocus]);
   const send = async () => {
-    if (!text.trim() || busy) return;
+    if ((!text.trim() && !allowEmpty) || busy) return;
     setBusy(true);
     setError('');
     try {
@@ -76,7 +98,7 @@ function Composer({ placeholder, label, onSubmit, onCancel, autoFocus }: {
         }}
       />
       <div className="note-composer-actions">
-        <button className="small" disabled={!text.trim() || busy} onClick={() => void send()}>{busy ? 'Saving…' : label}</button>
+        <button className="small" disabled={(!text.trim() && !allowEmpty) || busy} onClick={() => void send()}>{busy ? 'Saving…' : label}</button>
         {onCancel && <button className="text-btn" onClick={onCancel}>Cancel</button>}
         {error && <span className="err">{error}</span>}
       </div>
@@ -98,21 +120,32 @@ export default function NotesPanel({
   canDelete,
   onClose,
   touch,
+  tool,
+  onTool,
+  color,
+  onColor,
+  onUndo,
 }: {
   notes: Note[] | null;
   loadError: string;
   activeId: string | null;
   onActivate: (id: string | null) => void;
-  /** A pin placed on the photo, waiting for its text. */
-  draft: { x: number; y: number } | null;
+  /** A pin or marks placed on the photo, waiting for their text. */
+  draft: { x: number; y: number; shapes?: Shape[] } | null;
   draftNumber: number;
   onDraftCancel: () => void;
-  onAdd: (input: { x?: number; y?: number; body: string; parentId?: string }) => Promise<void>;
+  onAdd: (input: NoteInput) => Promise<void>;
   onResolve: (id: string, resolved: boolean) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   canDelete: (n: Note) => boolean;
   onClose: () => void;
   touch: boolean;
+  tool: Tool;
+  onTool: (t: Tool) => void;
+  color: string;
+  onColor: (c: string) => void;
+  /** Take back the last mark of the drawing in progress. */
+  onUndo: () => void;
 }) {
   const [showResolved, setShowResolved] = useState(false);
   const [replyTo, setReplyTo] = useState<string | null>(null);
@@ -143,15 +176,51 @@ export default function NotesPanel({
         <button className="notes-close" aria-label="Close notes" onClick={onClose}>×</button>
       </div>
 
+      <div className="note-tools" role="toolbar" aria-label="Note tools">
+        {TOOLS.map((t) => (
+          <button
+            key={t.key}
+            className={`tool${tool === t.key ? ' on' : ''}`}
+            aria-pressed={tool === t.key}
+            aria-label={t.label}
+            title={t.label}
+            onClick={() => onTool(t.key)}
+          >
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+              <path d={t.icon} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        ))}
+        <span className="tool-sep" />
+        {COLORS.map((c) => (
+          <button
+            key={c}
+            className={`swatch${color === c ? ' on' : ''}`}
+            style={{ background: c }}
+            aria-label={`Colour ${c}`}
+            aria-pressed={color === c}
+            onClick={() => onColor(c)}
+          />
+        ))}
+      </div>
+
       <div className="notes-list" ref={listRef}>
         {draft && (
           <div className="note draft">
-            <div className="note-meta"><span className="pin-badge">{draftNumber}</span> New note</div>
+            <div className="note-meta">
+              <span className="pin-badge">{draftNumber}</span>
+              {draft.shapes?.length ? `New drawing · ${draft.shapes.length} ${draft.shapes.length === 1 ? 'mark' : 'marks'}` : 'New note'}
+              {!!draft.shapes?.length && (
+                <button className="text-btn" title="Undo (⌘Z)" onClick={onUndo}>Undo</button>
+              )}
+            </div>
             <Composer
-              autoFocus
+              key={draft.shapes?.length ? 'drawing' : `${draft.x},${draft.y}`}
+              autoFocus={!draft.shapes?.length}
+              allowEmpty={!!draft.shapes?.length}
               label="Add note"
-              placeholder="What should change here?"
-              onSubmit={(body) => onAdd({ x: draft.x, y: draft.y, body })}
+              placeholder={draft.shapes?.length ? 'Keep drawing, or say what should change (optional)' : 'What should change here?'}
+              onSubmit={(body) => onAdd({ x: draft.x, y: draft.y, body, shapes: draft.shapes?.length ? draft.shapes : undefined })}
               onCancel={onDraftCancel}
             />
           </div>
@@ -161,7 +230,9 @@ export default function NotesPanel({
         {loadError && <p className="err">{loadError}</p>}
         {notes !== null && top.length === 0 && !draft && (
           <p className="meta notes-empty">
-            {touch ? 'Tap' : 'Click'} the photo to pin a note to that spot, or add a general note below.
+            {tool === 'pin'
+              ? `${touch ? 'Tap' : 'Click'} the photo to pin a note to that spot, or add a general note below.`
+              : `Draw on the photo, then add a note for your marks.`}
           </p>
         )}
 
@@ -178,7 +249,8 @@ export default function NotesPanel({
               <span className="meta">{when(n.createdAt)}</span>
               {n.resolvedAt && <span className="meta">· resolved{n.resolvedBy ? ` by ${n.resolvedBy}` : ''}</span>}
             </div>
-            <p className="note-body">{n.body}</p>
+            {n.body ? <p className="note-body">{n.body}</p> : null}
+            {n.shapes?.length ? <p className="meta note-drawing">✎ Drawing</p> : null}
             {replies(n.id).map((r) => (
               <div key={r.id} className="note-reply">
                 <div className="note-meta">
@@ -220,9 +292,12 @@ export default function NotesPanel({
         ))}
       </div>
 
-      <div className="notes-foot">
-        <Composer label="Add" placeholder="General note for this photo…" onSubmit={(body) => onAdd({ body })} />
-      </div>
+      {/* One thing at a time: while a pin or drawing waits for its words, its box is the only one. */}
+      {!draft && (
+        <div className="notes-foot">
+          <Composer label="Add" placeholder="General note for this photo…" onSubmit={(body) => onAdd({ body })} />
+        </div>
+      )}
     </aside>
   );
 }

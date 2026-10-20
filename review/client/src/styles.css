@@ -391,6 +391,24 @@ button.ghost.danger:hover { border-color: #c0392b; }
 }
 .viewer-notes-btn.on { border-color: var(--fg); }
 
+/* drawn marks: an SVG the size of the photo, under the pins */
+.viewer-frame .marks { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; z-index: 1; }
+.viewer-stage.drawing .viewer-frame img { cursor: crosshair; }
+.note-tools { display: flex; align-items: center; gap: 4px; padding: 0 16px 10px; flex-wrap: wrap; }
+.note-tools .tool {
+  width: 32px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center;
+  background: transparent; color: var(--muted); border: 1px solid transparent; border-radius: 3px;
+}
+.note-tools .tool:hover { color: var(--fg); }
+.note-tools .tool.on { color: var(--fg); border-color: var(--fg); }
+.note-tools .tool-sep { width: 1px; height: 18px; background: var(--line); margin: 0 6px; }
+.note-tools .swatch {
+  width: 18px; height: 18px; padding: 0; margin: 0 2px; border-radius: 50%;
+  border: 2px solid var(--bg); box-shadow: 0 0 0 1px var(--line);
+}
+.note-tools .swatch.on { box-shadow: 0 0 0 2px var(--fg); }
+.note-drawing { margin: 4px 0 0; }
+
 /* note pins on the photo: constant size at any zoom (counter-scaled inline) */
 .pin {
   position: absolute; z-index: 2; display: flex; align-items: center; justify-content: center;

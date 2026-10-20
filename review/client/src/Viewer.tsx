@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Img } from './Grid';
-import NotesPanel, { pinNumbers, type Note, type NotesApi } from './NotesPanel';
+import NotesPanel, { pinNumbers, COLORS, type Note, type NotesApi, type Shape, type Tool } from './NotesPanel';
 
 const SWIPE_DISTANCE = 60;   // px: a deliberate horizontal drag
 const SWIPE_VELOCITY = 0.45; // px/ms: or a quick flick
@@ -12,6 +12,51 @@ const ZOOM_STEP = 1.6;
 // as many names as fit a line: six on a desktop, three on a phone.
 const shownPickers = () => (window.matchMedia('(max-width: 760px)').matches ? 3 : 6);
 const NOTES_KEY = 'review-notes-open';
+const STROKE = 3;        // px on screen, whatever the zoom
+const ARROW_HEAD = 14;   // px
+const MIN_MARK = 6;      // px: anything smaller was a slip, not a mark
+
+/** Where a mark is labelled: its pin goes here. */
+const anchorOf = (s: Shape): [number, number] =>
+  s.t === 'pen' ? s.p[0]! : s.t === 'ellipse' ? [Math.min(s.a[0], s.b[0]), Math.min(s.a[1], s.b[1])] : s.a;
+
+/**
+ * One mark as SVG, in photo pixels (the SVG's viewBox is the photo's size).
+ * `px` is how many photo pixels one screen pixel covers right now, so strokes
+ * and arrowheads stay the same size on screen at any zoom. A dark halo under
+ * each stroke keeps it readable on light and dark parts of a photo alike.
+ */
+function ShapeSvg({ s, w, h, px, dim }: { s: Shape; w: number; h: number; px: number; dim?: boolean }) {
+  const sw = STROKE * px;
+  let d = '';
+  let ellipse: { cx: number; cy: number; rx: number; ry: number } | null = null;
+  if (s.t === 'pen') {
+    d = s.p.map(([x, y], i) => `${i ? 'L' : 'M'}${(x * w).toFixed(1)} ${(y * h).toFixed(1)}`).join(' ');
+  } else if (s.t === 'ellipse') {
+    ellipse = {
+      cx: ((s.a[0] + s.b[0]) / 2) * w, cy: ((s.a[1] + s.b[1]) / 2) * h,
+      rx: (Math.abs(s.a[0] - s.b[0]) / 2) * w, ry: (Math.abs(s.a[1] - s.b[1]) / 2) * h,
+    };
+  } else {
+    const [x1, y1, x2, y2] = [s.a[0] * w, s.a[1] * h, s.b[0] * w, s.b[1] * h];
+    const ang = Math.atan2(y2 - y1, x2 - x1);
+    const head = ARROW_HEAD * px;
+    const wing = (sign: number) =>
+      `${(x2 - head * Math.cos(ang + sign * 0.5)).toFixed(1)} ${(y2 - head * Math.sin(ang + sign * 0.5)).toFixed(1)}`;
+    d = `M${x1.toFixed(1)} ${y1.toFixed(1)} L${x2.toFixed(1)} ${y2.toFixed(1)} M${wing(1)} L${x2.toFixed(1)} ${y2.toFixed(1)} L${wing(-1)}`;
+  }
+  const stroke = (color: string, width: number) => ({
+    fill: 'none', stroke: color, strokeWidth: width, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const,
+  });
+  const draw = (color: string, width: number) =>
+    ellipse ? <ellipse {...ellipse} {...stroke(color, width)} /> : <path d={d} {...stroke(color, width)} />;
+  return (
+    <g opacity={dim ? 0.3 : 1}>
+      {draw('rgba(0,0,0,0.4)', sw * 2.2)}
+      {draw(s.c, sw)}
+    </g>
+  );
+}
 const isTyping = (t: EventTarget | null) =>
   t instanceof HTMLElement && !!t.closest('input, textarea, select, [contenteditable="true"]');
 
@@ -95,7 +140,11 @@ export default function Viewer({
   const zoomRef = useRef(1);
   const panRef = useRef({ x: 0, y: 0 });
   const pointers = useRef(new Map<number, { x: number; y: number }>());
-  const pinch = useRef<{ dist: number; zoom: number } | null>(null);
+  const pinch = useRef<{ dist: number; zoom: number; mid: { x: number; y: number } } | null>(null);
+  // The mark being drawn right now (not yet part of the draft).
+  const [live, setLive] = useState<Shape | null>(null);
+  const liveRef = useRef<Shape | null>(null);
+  const drawPointer = useRef<number | null>(null);
 
   // ---- notes ----
   const [notesOpen, setNotesOpen] = useState(() => {
@@ -104,8 +153,11 @@ export default function Viewer({
   const [notes, setNotes] = useState<Note[] | null>(null);
   const [notesError, setNotesError] = useState('');
   const [activeNote, setActiveNote] = useState<string | null>(null);
-  const [draft, setDraft] = useState<{ x: number; y: number } | null>(null);
+  const [draft, setDraft] = useState<{ x: number; y: number; shapes?: Shape[] } | null>(null);
   const [touch, setTouch] = useState(false);
+  const [tool, setTool] = useState<Tool>('pin');
+  const [color, setColor] = useState<string>(COLORS[0]);
+  const drawing = notesOpen && !!notesApi && tool !== 'pin';
 
   const go = (i: number) => onIndex(Math.max(0, Math.min(images.length - 1, i)));
 
@@ -172,6 +224,8 @@ export default function Viewer({
     setPanState({ x: 0, y: 0 });
     setDraft(null);
     setActiveNote(null);
+    liveRef.current = null;
+    setLive(null);
   }, [img?.id]);
 
   // Trackpad pinch arrives as ctrl+wheel; a plain wheel pans once zoomed in.
@@ -226,6 +280,11 @@ export default function Viewer({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (isTyping(e.target)) return; // typing a note: arrows and Escape belong to the text box
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && draft?.shapes?.length) {
+        e.preventDefault();
+        undoMark();
+        return;
+      }
       if (e.key === 'Escape') {
         if (draft) setDraft(null);
         else onClose();
@@ -279,17 +338,96 @@ export default function Viewer({
     return x >= 0 && x <= 1 && y >= 0 && y <= 1 ? { x, y } : null;
   }
 
+  /** The same, held to the photo's edges: a stroke may wander off and come back. */
+  function clampedPoint(cx: number, cy: number): [number, number] {
+    const r = imgRef.current!.getBoundingClientRect();
+    const c = (v: number) => Math.round(Math.max(0, Math.min(1, v)) * 1e4) / 1e4;
+    return [c((cx - r.left) / r.width), c((cy - r.top) / r.height)];
+  }
+
+  function startMark(e: React.PointerEvent): boolean {
+    const p = pointOnPhoto(e.clientX, e.clientY);
+    if (!p) return false;
+    const at: [number, number] = clampedPoint(e.clientX, e.clientY);
+    const shape: Shape = tool === 'pen' ? { t: 'pen', c: color, p: [at] } : { t: tool as 'ellipse' | 'arrow', c: color, a: at, b: at };
+    liveRef.current = shape;
+    setLive(shape);
+    drawPointer.current = e.pointerId;
+    // Keep the stroke if the pointer leaves the stage; harmless if capture isn't possible.
+    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* not capturable */ }
+    setActiveNote(null);
+    return true;
+  }
+
+  function moveMark(e: React.PointerEvent) {
+    const s = liveRef.current;
+    if (!s) return;
+    const at = clampedPoint(e.clientX, e.clientY);
+    let next: Shape;
+    if (s.t === 'pen') {
+      // Thin the stroke: a new point only once the pointer has moved a couple of pixels.
+      const r = imgRef.current!.getBoundingClientRect();
+      const last = s.p[s.p.length - 1]!;
+      if (Math.hypot((at[0] - last[0]) * r.width, (at[1] - last[1]) * r.height) < 2.5 || s.p.length >= 600) return;
+      next = { ...s, p: [...s.p, at] };
+    } else {
+      next = { ...s, b: at };
+    }
+    liveRef.current = next;
+    setLive(next);
+  }
+
+  function endMark() {
+    const s = liveRef.current;
+    liveRef.current = null;
+    drawPointer.current = null;
+    setLive(null);
+    if (!s) return;
+    const r = imgRef.current?.getBoundingClientRect();
+    const span = (a: [number, number], b: [number, number]) =>
+      r ? Math.hypot((a[0] - b[0]) * r.width, (a[1] - b[1]) * r.height) : 0;
+    const big = s.t === 'pen' ? s.p.length >= 2 && span(s.p[0]!, s.p[s.p.length - 1]!) + s.p.length > MIN_MARK : span(s.a, s.b) >= MIN_MARK;
+    if (!big) return;
+    setDraft((d) => {
+      const shapes = [...(d?.shapes ?? []), s];
+      const [x, y] = anchorOf(shapes[0]!);
+      return { x, y, shapes };
+    });
+  }
+
+  function undoMark() {
+    setDraft((d) => {
+      if (!d?.shapes?.length) return d;
+      const shapes = d.shapes.slice(0, -1);
+      if (!shapes.length) return null;
+      const [x, y] = anchorOf(shapes[0]!);
+      return { x, y, shapes };
+    });
+  }
+
   function onPointerDown(e: React.PointerEvent) {
     lastPointerType.current = e.pointerType;
     if (e.pointerType !== 'mouse') setTouch(true);
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.current.size === 2) {
-      // Second finger down: this is a pinch, not a swipe or a tap.
+      // Second finger down: this is a pinch (zoom and pan), not a swipe, a tap or a stroke.
       const [a, b] = [...pointers.current.values()];
-      pinch.current = { dist: Math.hypot(a!.x - b!.x, a!.y - b!.y), zoom: zoomRef.current };
+      pinch.current = {
+        dist: Math.hypot(a!.x - b!.x, a!.y - b!.y), zoom: zoomRef.current,
+        mid: { x: (a!.x + b!.x) / 2, y: (a!.y + b!.y) / 2 },
+      };
       gesture.current = null;
+      liveRef.current = null;
+      drawPointer.current = null;
+      setLive(null);
       setDragX(0);
+      return;
+    }
+    // A drawing tool: a drag on the photo is a mark. Panning is two fingers, the
+    // scroll wheel, or switching back to the pin tool.
+    if (drawing && startMark(e)) {
+      gesture.current = null;
       return;
     }
     gesture.current = {
@@ -304,7 +442,15 @@ export default function Viewer({
     if (pinch.current && pointers.current.size >= 2) {
       const [a, b] = [...pointers.current.values()];
       const dist = Math.hypot(a!.x - b!.x, a!.y - b!.y);
-      zoomAt(pinch.current.zoom * (dist / Math.max(1, pinch.current.dist)), (a!.x + b!.x) / 2, (a!.y + b!.y) / 2);
+      const mid = { x: (a!.x + b!.x) / 2, y: (a!.y + b!.y) / 2 };
+      // The photo moves with the fingers, then scales around the point between them.
+      setView(zoomRef.current, { x: panRef.current.x + mid.x - pinch.current.mid.x, y: panRef.current.y + mid.y - pinch.current.mid.y });
+      pinch.current.mid = mid;
+      zoomAt(pinch.current.zoom * (dist / Math.max(1, pinch.current.dist)), mid.x, mid.y);
+      return;
+    }
+    if (drawPointer.current === e.pointerId) {
+      moveMark(e);
       return;
     }
     const g = gesture.current;
@@ -328,6 +474,12 @@ export default function Viewer({
 
   function onPointerUp(e: React.PointerEvent) {
     pointers.current.delete(e.pointerId);
+    if (drawPointer.current === e.pointerId) {
+      moveMark(e); // where the pointer was released is where the mark ends
+      endMark();
+      suppressClick.current = performance.now();
+      return;
+    }
     if (pinch.current) {
       if (pointers.current.size < 2) pinch.current = null;
       suppressClick.current = performance.now();
@@ -368,7 +520,7 @@ export default function Viewer({
     if (notesOpen && notesApi) {
       suppressClick.current = performance.now();
       const p = pointOnPhoto(e.clientX, e.clientY);
-      if (p) {
+      if (p && !draft?.shapes?.length) {
         setDraft(p);
         setActiveNote(null);
       }
@@ -388,6 +540,11 @@ export default function Viewer({
 
   function onPointerCancel(e: React.PointerEvent) {
     pointers.current.delete(e.pointerId);
+    if (drawPointer.current === e.pointerId) {
+      liveRef.current = null;
+      drawPointer.current = null;
+      setLive(null);
+    }
     if (pointers.current.size < 2) pinch.current = null;
     gesture.current = null;
     setSettling(true);
@@ -396,6 +553,9 @@ export default function Viewer({
 
   const numbers = pinNumbers(notes ?? []);
   const pins = notesOpen ? (notes ?? []).filter((n) => !n.parentId && n.x !== null) : [];
+  const marked = notesOpen ? (notes ?? []).filter((n) => !n.parentId && n.shapes?.length) : [];
+  // Photo pixels per screen pixel, for strokes that stay one size at any zoom.
+  const px = fit > 0 ? 1 / (fit * zoom) : 1;
   const openCount = img.notesOpen ?? 0;
   const zoomed = zoom > 1;
 
@@ -404,7 +564,10 @@ export default function Viewer({
       className={`viewer${notesOpen ? ' with-notes' : ''}`}
       onClickCapture={(e) => {
         // A swipe, pan or double-tap must not also count as a click that closes the viewer.
-        if (suppressClick.current && performance.now() - suppressClick.current < 400) {
+        // Only on the photo area or the margin: buttons in the bar or the notes
+        // panel are always real clicks, however soon after a stroke they come.
+        const onStage = stageRef.current?.contains(e.target as Node) || e.target === e.currentTarget;
+        if (onStage && suppressClick.current && performance.now() - suppressClick.current < 400) {
           suppressClick.current = 0;
           e.stopPropagation();
         }
@@ -465,7 +628,7 @@ export default function Viewer({
       <div className="viewer-body">
         <div
           ref={stageRef}
-          className={`viewer-stage${zoomed ? ' zoomed' : ''}${notesOpen ? ' annotating' : ''}`}
+          className={`viewer-stage${zoomed ? ' zoomed' : ''}${notesOpen ? ' annotating' : ''}${drawing ? ' drawing' : ''}`}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
@@ -489,6 +652,17 @@ export default function Viewer({
                 alt={img.filename}
                 draggable={false}
               />
+              {(marked.length > 0 || draft?.shapes?.length || live) && (
+                <svg className="marks" viewBox={`0 0 ${img.w} ${img.h}`} preserveAspectRatio="none" aria-hidden="true">
+                  {marked.map((n) =>
+                    n.shapes!.map((s, i) => (
+                      <ShapeSvg key={`${n.id}-${i}`} s={s} w={img.w} h={img.h} px={px}
+                        dim={!!n.resolvedAt || (!!activeNote && activeNote !== n.id)} />
+                    )))}
+                  {draft?.shapes?.map((s, i) => <ShapeSvg key={`d-${i}`} s={s} w={img.w} h={img.h} px={px} />)}
+                  {live && <ShapeSvg s={live} w={img.w} h={img.h} px={px} />}
+                </svg>
+              )}
               {pins.map((n) => (
                 <button
                   key={n.id}
@@ -541,6 +715,15 @@ export default function Viewer({
             canDelete={(n) => n.mine || canModerate}
             onClose={() => toggleNotes(false)}
             touch={touch}
+            tool={tool}
+            onTool={(t) => {
+              setTool(t);
+              // A lone pin waiting for text doesn't carry over into drawing.
+              if (t !== 'pin' && draft && !draft.shapes?.length) setDraft(null);
+            }}
+            color={color}
+            onColor={setColor}
+            onUndo={undoMark}
           />
         )}
       </div>
@@ -599,10 +782,10 @@ export default function Viewer({
             </button>
           )}
           <span className="meta hint-keys">
-            {notesOpen ? 'Click the photo to pin a note · ' : ''}← → to move · F or Space to select · +/− to zoom · Esc to close
+            {notesOpen ? (drawing ? 'Drag on the photo to draw · ⌘Z to undo · ' : 'Click the photo to pin a note · ') : ''}← → to move · F or Space to select · +/− to zoom · Esc to close
           </span>
           <span className="meta hint-touch">
-            {notesOpen ? 'Tap the photo to pin a note · pinch to zoom' : 'Swipe · double-tap to select · pinch to zoom'}
+            {notesOpen ? (drawing ? 'Draw with one finger · two fingers to zoom and move' : 'Tap the photo to pin a note · pinch to zoom') : 'Swipe · double-tap to select · pinch to zoom'}
           </span>
         </span>
         {onToggle ? (

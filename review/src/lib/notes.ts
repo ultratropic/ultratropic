@@ -9,12 +9,47 @@ import type { Env } from '../types';
  * the owner and by themselves.
  */
 
+/** A mark on the photo; every coordinate is a fraction of its width or height. */
+export type Shape =
+  | { t: 'pen'; c: string; p: Array<[number, number]> }
+  | { t: 'ellipse' | 'arrow'; c: string; a: [number, number]; b: [number, number] };
+
+const COLOR = /^#[0-9a-f]{6}$/i;
+const MAX_SHAPES = 30;
+const MAX_POINTS = 600;
+
+/** Validates and tidies drawn shapes; null if they aren't acceptable. */
+function cleanShapes(v: unknown): Shape[] | null {
+  if (!Array.isArray(v) || v.length === 0 || v.length > MAX_SHAPES) return null;
+  const unit = (n: unknown) => typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= 1;
+  const pt = (q: unknown): [number, number] | null =>
+    Array.isArray(q) && q.length === 2 && unit(q[0]) && unit(q[1])
+      ? [Math.round(q[0] * 1e4) / 1e4, Math.round(q[1] * 1e4) / 1e4]
+      : null;
+  const out: Shape[] = [];
+  for (const s of v as Array<Record<string, unknown>>) {
+    if (!s || typeof s !== 'object' || typeof s.c !== 'string' || !COLOR.test(s.c)) return null;
+    if (s.t === 'pen') {
+      if (!Array.isArray(s.p) || s.p.length < 2 || s.p.length > MAX_POINTS) return null;
+      const p = s.p.map(pt);
+      if (p.some((q) => !q)) return null;
+      out.push({ t: 'pen', c: s.c, p: p as Array<[number, number]> });
+    } else if (s.t === 'ellipse' || s.t === 'arrow') {
+      const a = pt(s.a), b = pt(s.b);
+      if (!a || !b) return null;
+      out.push({ t: s.t, c: s.c, a, b });
+    } else return null;
+  }
+  return out;
+}
+
 export interface NoteOut {
   id: string;
   parentId: string | null;
   x: number | null;
   y: number | null;
   body: string;
+  shapes: Shape[] | null;
   author: string;
   mine: boolean;
   createdAt: number;
@@ -26,7 +61,7 @@ const MAX_BODY = 2000;
 
 export async function listNotes(env: Env, imageId: string, viewerId: string, admin: boolean): Promise<NoteOut[]> {
   const { results } = await env.DB.prepare(
-    `SELECT n.id, n.parent_id, n.x, n.y, n.body, n.created_at, n.resolved_at, n.reviewer_id,
+    `SELECT n.id, n.parent_id, n.x, n.y, n.body, n.shapes, n.created_at, n.resolved_at, n.reviewer_id,
             r.display_name AS author, rb.display_name AS resolver
        FROM notes n
        JOIN reviewers r ON r.id = n.reviewer_id
@@ -36,7 +71,7 @@ export async function listNotes(env: Env, imageId: string, viewerId: string, adm
   )
     .bind(imageId, admin ? 1 : 0, viewerId)
     .all<{
-      id: string; parent_id: string | null; x: number | null; y: number | null; body: string;
+      id: string; parent_id: string | null; x: number | null; y: number | null; body: string; shapes: string | null;
       created_at: number; resolved_at: number | null; reviewer_id: string; author: string; resolver: string | null;
     }>();
   const ids = new Set(results.map((n) => n.id));
@@ -49,6 +84,7 @@ export async function listNotes(env: Env, imageId: string, viewerId: string, adm
       x: n.x,
       y: n.y,
       body: n.body,
+      shapes: n.shapes ? (JSON.parse(n.shapes) as Shape[]) : null,
       author: n.author,
       mine: n.reviewer_id === viewerId,
       createdAt: n.created_at,
@@ -57,14 +93,20 @@ export async function listNotes(env: Env, imageId: string, viewerId: string, adm
     }));
 }
 
-type Input = { x?: unknown; y?: unknown; body?: unknown; parentId?: unknown };
+type Input = { x?: unknown; y?: unknown; body?: unknown; parentId?: unknown; shapes?: unknown };
 
 /** Returns the new note's id, or an error message. */
 export async function addNote(
   env: Env, projectId: string, imageId: string, reviewerId: string, input: Input,
 ): Promise<{ id: string } | { error: string }> {
   const body = typeof input.body === 'string' ? input.body.trim().slice(0, MAX_BODY) : '';
-  if (!body) return { error: 'body required' };
+  let shapes: Shape[] | null = null;
+  if (input.shapes !== undefined && input.shapes !== null) {
+    shapes = cleanShapes(input.shapes);
+    if (!shapes) return { error: 'shapes are not valid' };
+  }
+  // Marks can speak for themselves; anything else needs words.
+  if (!body && !shapes) return { error: 'body required' };
   const inUnit = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1;
   let parentId: string | null = null;
   let x: number | null = null;
@@ -76,6 +118,8 @@ export async function addNote(
       .first<{ id: string; parent_id: string | null }>();
     if (!parent) return { error: 'parent note not found' };
     parentId = parent.parent_id ?? parent.id; // replies stay one level deep
+    shapes = null; // replies are words only
+    if (!body) return { error: 'body required' };
   } else if (input.x !== undefined && input.x !== null) {
     if (!inUnit(input.x) || !inUnit(input.y)) return { error: 'x and y must be between 0 and 1' };
     x = input.x as number;
@@ -83,10 +127,10 @@ export async function addNote(
   }
   const id = ulid();
   await env.DB.prepare(
-    `INSERT INTO notes (id, project_id, image_id, reviewer_id, parent_id, x, y, body, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO notes (id, project_id, image_id, reviewer_id, parent_id, x, y, body, shapes, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
-    .bind(id, projectId, imageId, reviewerId, parentId, x, y, body, Date.now())
+    .bind(id, projectId, imageId, reviewerId, parentId, x, y, body, shapes ? JSON.stringify(shapes) : null, Date.now())
     .run();
   return { id };
 }
