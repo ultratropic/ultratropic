@@ -169,15 +169,10 @@ export default function Viewer({
 
   // ---- notes ----
   const [notesOpen, setNotesOpen] = useState(() => {
-    // Open by default beside the photo; on a phone it would take half the
-    // screen (and hide who picked the photo), so there it starts closed. Either
-    // way, opening or closing it is remembered for the rest of the visit.
+    // Closed by default, so a pass through the photos is just selecting; the
+    // Notes button (or N) opens it, and that choice is remembered for the visit.
     if (!notesApi) return false;
-    const wide = window.matchMedia('(min-width: 761px)').matches;
-    try {
-      const saved = sessionStorage.getItem(NOTES_KEY);
-      return saved === null ? wide : saved === '1';
-    } catch { return wide; }
+    try { return sessionStorage.getItem(NOTES_KEY) === '1'; } catch { return false; }
   });
   // Notes are kept with the photo they belong to, so a late answer for one
   // photo can never show up on the next.
