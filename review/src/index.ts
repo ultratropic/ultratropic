@@ -71,6 +71,12 @@ app.get('/i/:key', async (c) => {
     if (!owner) return c.text('not found', 404);
     const session = await readReviewerFor(c, owner.project_id);
     if (!session || !canSeeAlbum(session, owner.album_id)) return c.text('not found', 404);
+    // A removed reviewer's cookie is still validly signed: check they still exist,
+    // or they could keep loading photos whose addresses they'd already seen.
+    const live = await c.env.DB.prepare(`SELECT 1 FROM reviewers WHERE id = ? AND project_id = ?`)
+      .bind(session.rid, owner.project_id)
+      .first();
+    if (!live) return c.text('not found', 404);
   }
 
   // Two cache policies for one image. The browser gets `private`: a shared
@@ -108,6 +114,28 @@ app.get('/i/:key', async (c) => {
   const h = browserHeaders(base);
   h.set('x-review-cache', 'miss');
   return new Response(bytes, { headers: h });
+});
+
+/**
+ * Every JSON request body this API takes is an object. Anything else that
+ * parses (null, an array, a number) is refused here, once, rather than
+ * tripping over a destructure in some handler and surfacing as a 500.
+ */
+app.use('/api/*', async (c, next) => {
+  const type = c.req.header('content-type') ?? '';
+  if (['POST', 'PUT', 'PATCH'].includes(c.req.method) && type.includes('application/json')) {
+    const body = await c.req.json().catch(() => undefined); // unparseable: each handler already copes
+    if (body !== undefined && (body === null || typeof body !== 'object' || Array.isArray(body))) {
+      return c.json({ error: 'expected a JSON object' }, 400);
+    }
+  }
+  await next();
+});
+
+/** Anything unexpected still answers in the API's own shape, and leaves a trace in the logs. */
+app.onError((err, c) => {
+  console.error('[review]', c.req.method, new URL(c.req.url).pathname, err);
+  return c.json({ error: 'something went wrong' }, 500);
 });
 
 app.route('/api/admin', adminRoutes);

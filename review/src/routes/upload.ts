@@ -56,6 +56,16 @@ upload.post('/projects/:pid/images', async (c) => {
     return c.json({ error: 'images[] required' }, 400);
   }
   if (images.length > 500) return c.json({ error: 'batch too large (max 500)' }, 400);
+  const KEY = /^[A-Za-z0-9]{32}$/;
+  const dim = (n: unknown) => Number.isInteger(n) && (n as number) > 0 && (n as number) <= 100000;
+  const bad = images.findIndex((i) =>
+    !i || typeof i !== 'object' || typeof i.albumId !== 'string' ||
+    typeof i.filename !== 'string' || !i.filename.trim() || i.filename.length > 255 ||
+    typeof i.thumbKey !== 'string' || !KEY.test(i.thumbKey) ||
+    typeof i.previewKey !== 'string' || !KEY.test(i.previewKey) ||
+    !dim(i.width) || !dim(i.height) ||
+    (i.captureTime != null && !Number.isFinite(i.captureTime)));
+  if (bad >= 0) return c.json({ error: `image ${bad + 1} is incomplete or malformed` }, 400);
 
   const project = await c.env.DB.prepare(`SELECT id FROM projects WHERE id = ?`).bind(projectId).first();
   if (!project) return c.json({ error: 'project not found' }, 404);
