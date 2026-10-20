@@ -128,16 +128,33 @@ export default function Viewer({
   const [notesOpen, setNotesOpen] = useState(() => {
     try { return !!notesApi && sessionStorage.getItem(NOTES_KEY) === '1'; } catch { return false; }
   });
-  const [notes, setNotes] = useState<Note[] | null>(null);
+  // Notes are kept with the photo they belong to, so a late answer for one
+  // photo can never show up on the next.
+  const [notesFor, setNotesFor] = useState<{ imageId: string; list: Note[] } | null>(null);
+  const notes = notesFor && notesFor.imageId === img?.id ? notesFor.list : null;
   const [notesError, setNotesError] = useState('');
   const [activeNote, setActiveNote] = useState<string | null>(null);
   const [draft, setDraft] = useState<{ x: number; y: number; shapes?: Shape[] } | null>(null);
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const imgIdRef = useRef(img?.id);
+  imgIdRef.current = img?.id;
   const [touch, setTouch] = useState(false);
   const [tool, setTool] = useState<Tool>('pin');
   const [color, setColor] = useState<string>(COLORS[0]);
   const drawing = notesOpen && !!notesApi && tool !== 'pin';
 
-  const go = (i: number) => onIndex(Math.max(0, Math.min(images.length - 1, i)));
+  /** A pin or drawing not yet saved: moving on would lose it, so ask first. */
+  const keepDraft = () =>
+    !!draftRef.current && !window.confirm(
+      draftRef.current.shapes?.length ? 'Discard the drawing you haven\'t saved?' : 'Discard the note you haven\'t saved?',
+    );
+  const go = (i: number) => {
+    const target = Math.max(0, Math.min(images.length - 1, i));
+    if (target === index || keepDraft()) return;
+    onIndex(target);
+  };
+  const close = () => { if (!keepDraft()) onClose(); };
 
   // Measured straight away (so the first paint is already the right size) and
   // again whenever the stage changes: window resize, notes panel in or out.
@@ -233,10 +250,10 @@ export default function Viewer({
   useEffect(() => {
     if (!notesApi || !notesOpen || !img) return;
     let live = true;
-    setNotes(null);
+    const imageId = img.id;
     setNotesError('');
-    notesApi.list(img.id)
-      .then((list) => { if (live) { setNotes(list); report(img.id, list); } })
+    notesApi.list(imageId)
+      .then((list) => { if (live) { setNotesFor({ imageId, list }); report(imageId, list); } })
       .catch(() => { if (live) setNotesError('Could not load notes.'); });
     return () => { live = false; };
   }, [notesApi, notesOpen, img?.id, report]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -250,9 +267,11 @@ export default function Viewer({
     });
   }, []);
 
-  const apply = (list: Note[]) => {
-    setNotes(list);
-    if (img) report(img.id, list);
+  /** A changed list for a photo, from any note action. Counts update even if you've moved on. */
+  const apply = (imageId: string, list: Note[]) => {
+    // A late answer for a photo you've left mustn't replace the one on screen.
+    setNotesFor((cur) => (cur && imageId !== imgIdRef.current && cur.imageId === imgIdRef.current ? cur : { imageId, list }));
+    report(imageId, list);
   };
 
   useEffect(() => {
@@ -265,7 +284,7 @@ export default function Viewer({
       }
       if (e.key === 'Escape') {
         if (draft) setDraft(null);
-        else onClose();
+        else close();
       } else if (e.key === 'ArrowRight') go(index + 1);
       else if (e.key === 'ArrowLeft') go(index - 1);
       else if (e.key === '+' || e.key === '=') zoomAt(zoomRef.current * ZOOM_STEP);
@@ -554,7 +573,7 @@ export default function Viewer({
         // Clicking the margin closes on desktop. On touch it doesn't: the first
         // half of a double-tap near the edge would otherwise close the viewer.
         // Not while annotating or zoomed, where a stray click would lose your place.
-        if (lastPointerType.current === 'mouse' && !notesOpen && !zoomed) onClose();
+        if (lastPointerType.current === 'mouse' && !notesOpen && !zoomed) close();
       }}
     >
       <div className="viewer-head">
@@ -597,7 +616,7 @@ export default function Viewer({
           className="viewer-close"
           aria-label="Close"
           title="Close (Esc)"
-          onClick={(e) => { e.stopPropagation(); onClose(); }}
+          onClick={(e) => { e.stopPropagation(); close(); }}
         >
           ×
         </button>
@@ -673,6 +692,8 @@ export default function Viewer({
 
         {notesOpen && notesApi && (
           <NotesPanel
+            // Fresh per photo: half-typed words must never be posted to the next one.
+            key={img.id}
             notes={notes}
             loadError={notesError}
             activeId={activeNote}
@@ -681,13 +702,19 @@ export default function Viewer({
             draftNumber={numbers.size + 1}
             onDraftCancel={() => setDraft(null)}
             onAdd={async (input) => {
-              const list = await notesApi.add(img.id, input);
-              apply(list);
-              if (input.x !== undefined) setDraft(null);
+              const imageId = img.id;
+              const list = await notesApi.add(imageId, input);
+              apply(imageId, list);
+              // Only clear the draft that was just saved, not one started on another photo since.
+              if (input.x !== undefined && imgIdRef.current === imageId) setDraft(null);
             }}
-            onResolve={async (id, resolved) => apply(await notesApi.resolve(id, resolved))}
+            onResolve={async (id, resolved) => {
+              const imageId = img.id;
+              apply(imageId, await notesApi.resolve(id, resolved));
+            }}
             onDelete={async (id) => {
-              apply(await notesApi.remove(id));
+              const imageId = img.id;
+              apply(imageId, await notesApi.remove(id));
               if (activeNote === id) setActiveNote(null);
             }}
             canDelete={(n) => n.mine || canModerate}
