@@ -109,11 +109,18 @@ export default function Gallery({
   const [data, setData] = useState<GalleryData | null>(null);
   const [images, setImages] = useState<GalleryImg[]>([]);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const [frozenIds, setFrozenIds] = useState<string[] | null>(null);
+  const liveListRef = useRef<GalleryImg[]>([]);
+  useEffect(() => { if (openIndex === null) setFrozenIds(null); }, [openIndex]);
 
   // Full screen gets its own history entry, so Back (the button, or an edge
   // swipe on a phone) closes it instead of leaving the gallery.
   const openViewer = useCallback((i: number) => {
     if (!history.state?.viewer) history.pushState({ ...history.state, viewer: true }, '');
+    // The tile or sidebar button you clicked keeps focus behind the viewer, and
+    // Space presses a focused button: it would jump the gallery to an album.
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    setFrozenIds((cur) => cur ?? liveListRef.current.map((img) => img.id));
     setOpenIndex(i);
   }, []);
   // history.back() is async: a second close before popstate lands (Escape and a
@@ -477,7 +484,7 @@ export default function Gallery({
    * each model on screen with all of their photos together, so the arrows go
    * through one model's photos and then on to the next model.
    */
-  const viewerList = useMemo(() => {
+  const liveList = useMemo(() => {
     if (!peopleByKey) return visible;
     const seen = new Set<string>();
     const out: GalleryImg[] = [];
@@ -489,6 +496,15 @@ export default function Gallery({
     }
     return out;
   }, [visible, peopleByKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  liveListRef.current = liveList;
+  // While full screen is open its set stays put: unselecting under "My selects"
+  // (or ♥♥+, Everyone…) keeps the photo on screen instead of skipping it, or
+  // closing the viewer if it was the last. Filters apply again on close.
+  const byId = useMemo(() => new Map(images.map((img) => [img.id, img])), [images]);
+  const viewerList = useMemo(
+    () => (frozenIds ? frozenIds.flatMap((id) => byId.get(id) ?? []) : liveList),
+    [frozenIds, byId, liveList],
+  );
 
   const byAlbum = useMemo(() => {
     const groups = new Map<number, GalleryImg[]>();
@@ -573,8 +589,7 @@ export default function Gallery({
     else toggle(members[0]!.id);
   };
 
-  // Keep the viewer on a real frame when the set under it shrinks (a delete, or
-  // deselecting while filtered to "My selects").
+  // Keep the viewer on a real frame when the set under it shrinks (a delete).
   useEffect(() => {
     if (openIndex === null) return;
     if (viewerList.length === 0) closeViewer();
@@ -601,15 +616,22 @@ export default function Gallery({
       // Typing a note: those keys are letters, not shortcuts.
       if ((e.target as HTMLElement | null)?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
       if (e.key === ' ' || e.key.toLowerCase() === 'f') {
+        // Never also press whatever button has focus (a gallery button behind
+        // the viewer, or the viewer's own Select, which would undo the toggle).
+        if (document.activeElement instanceof HTMLButtonElement) document.activeElement.blur();
+        e.preventDefault();
+        if (e.repeat) return; // holding the key mustn't flicker the select
         const img = viewerList[openIndex];
-        if (img) {
-          e.preventDefault();
-          void toggle(img.id);
-        }
+        if (img) void toggle(img.id);
       }
     };
+    // Browsers press a focused button on Space's release; cancel that too.
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (openIndex !== null && e.key === ' ' && !(e.target as HTMLElement | null)?.closest?.('input, textarea, select, [contenteditable="true"]')) e.preventDefault();
+    };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('keyup', onKeyUp);
+    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKeyUp); };
   }, [openIndex, viewerList, toggle]);
 
   if (!data) {

@@ -148,7 +148,6 @@ export default function Viewer({
   // real click. Time-boxed, because some gestures (a touch swipe, a pinch) fire
   // no click at all, and the next genuine one must not be swallowed.
   const suppressClick = useRef(0);
-  const lastPointerType = useRef('mouse');
 
   // ---- zoom ----
   const stageRef = useRef<HTMLDivElement>(null);
@@ -534,7 +533,6 @@ export default function Viewer({
   }
 
   function onPointerDown(e: React.PointerEvent) {
-    lastPointerType.current = e.pointerType;
     if (e.pointerType !== 'mouse') setTouch(true);
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -711,12 +709,8 @@ export default function Viewer({
           e.stopPropagation();
         }
       }}
-      onClick={() => {
-        // Clicking the margin closes on desktop. On touch it doesn't: the first
-        // half of a double-tap near the edge would otherwise close the viewer.
-        // Not while annotating or zoomed, where a stray click would lose your place.
-        if (lastPointerType.current === 'mouse' && !notesOpen && !zoomed) close();
-      }}
+      // No click-to-close on the margin: only Esc, × or Back leave full screen,
+      // so a stray click beside the photo never loses your place.
     >
       <div className="viewer-head">
         {talent ? (() => {
