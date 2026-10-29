@@ -168,13 +168,19 @@ export default function Gallery({
   const [loadError, setLoadError] = useState('');
 
   /** The owner removed this reviewer: start over at the join screen. */
+  /**
+   * Signed out under our feet: a reviewer who was removed, or an owner whose
+   * session expired. Reloading shows the join or sign-in screen instead of
+   * hearts that silently flip back; unfinished notes are kept in the browser
+   * and saved once signed in again.
+   */
   const onRemoved = useCallback((err: unknown) => {
-    if (!admin && err instanceof ApiError && err.status === 401) {
+    if (err instanceof ApiError && err.status === 401) {
       location.reload();
       return true;
     }
     return false;
-  }, [admin]);
+  }, []);
 
   const loadGallery = useCallback(async () => {
     let d: GalleryData;

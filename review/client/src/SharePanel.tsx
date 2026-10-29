@@ -25,10 +25,12 @@ export default function SharePanel({
 }) {
   const [pw, setPw] = useState('');
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
   const link = state.shareToken ? `${location.origin}/a/${state.shareToken}` : null;
 
   async function save(password: string | null | undefined) {
     setBusy(true);
+    setError('');
     try {
       const res = await api<{ shareToken: string; hasPassword: boolean }>(
         `/api/admin/albums/${albumId}/share`,
@@ -36,6 +38,8 @@ export default function SharePanel({
       );
       setPw('');
       onSaved(res);
+    } catch (err) {
+      setError(`Couldn't save: ${(err as Error).message}`);
     } finally {
       setBusy(false);
     }
@@ -47,6 +51,7 @@ export default function SharePanel({
 
   return (
     <div className="share-panel" onClick={(e) => e.stopPropagation()}>
+      {error && <p className="err" style={{ marginTop: 0 }}>{error}</p>}
       {!link ? (
         <>
           <p className="meta" style={{ margin: '0 0 12px' }}>
