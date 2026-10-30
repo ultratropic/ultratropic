@@ -39,7 +39,8 @@ auth.post('/auth/start', async (c) => {
   }
   const { email: raw } = await c.req.json<{ email?: string }>().catch(() => ({ email: undefined }));
   const email = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
-  if (!EMAIL.test(email) || email.length > 254) return c.json({ error: 'Enter a valid email address.' }, 400);
+  // Length first: the pattern backtracks, so a huge input must never reach it.
+  if (email.length > 254 || !EMAIL.test(email)) return c.json({ error: 'Enter a valid email address.' }, 400);
 
   const known = await c.env.DB.prepare(`SELECT 1 FROM users WHERE email_norm = ?`).bind(email).first();
   if (!known && !invited(c.env, email)) {

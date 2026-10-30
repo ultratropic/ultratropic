@@ -380,12 +380,15 @@ admin.delete('/albums/:id', async (c) => {
  * Create or update an album's client link. The token is minted on first share
  * and then kept, so a link already sent keeps working when the password changes.
  * password: string sets it, null removes it, omitted leaves it alone.
+ * rotate: true replaces the token — for a link that went somewhere it shouldn't.
+ * Every reviewer route resolves the token, so the old link stops working for
+ * everyone at once, including people who already joined through it.
  */
 admin.post('/albums/:id/share', async (c) => {
   const albumId = c.req.param('id');
   const body = await c.req
-    .json<{ password?: string | null }>()
-    .catch(() => ({}) as { password?: string | null });
+    .json<{ password?: string | null; rotate?: boolean }>()
+    .catch(() => ({}) as { password?: string | null; rotate?: boolean });
 
   const album = await c.env.DB.prepare(
     `SELECT id, share_token, password_hash, password_salt FROM albums WHERE id = ?`,
@@ -394,7 +397,7 @@ admin.post('/albums/:id/share', async (c) => {
     .first<{ id: string; share_token: string | null; password_hash: string | null; password_salt: string | null }>();
   if (!album) return c.json({ error: 'album not found' }, 404);
 
-  const shareToken = album.share_token ?? token(16);
+  const shareToken = body.rotate === true || !album.share_token ? token(16) : album.share_token;
   let hash = album.password_hash;
   let salt = album.password_salt;
   if (body.password === null) {

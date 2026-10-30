@@ -9,8 +9,7 @@ import type { Env } from '../types';
 /** Who stands behind the product, named in the footer and the policies. */
 export const LEGAL = {
   company: 'Subtropic Creative, LLC',
-  // TODO(owner): confirm the state the LLC is organized in.
-  state: 'New York',
+  state: 'Florida',
   contact: 'support@ultra-tropic.com',
   updated: 'October 30, 2026',
 };

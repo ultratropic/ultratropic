@@ -1,5 +1,5 @@
 import { Hono, type Context } from 'hono';
-import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
+import { getCookie, setCookie } from 'hono/cookie';
 import { ulid, normalizeEmail } from '../lib/ids';
 import { verifyPassword, sign, unsign } from '../lib/crypto';
 import { listNotes, addNote, noteImage, resolveNote, deleteNote } from '../lib/notes';
@@ -10,6 +10,8 @@ import {
   canSeeAlbum,
   overLimit,
   visitor,
+  cookieName,
+  dropCookie,
 } from '../lib/auth';
 import { buildGallery } from '../lib/gallery';
 import type { Env, ReviewerSession, Vars } from '../types';
@@ -187,7 +189,7 @@ export function reviewerRoutes(resolve: Resolve) {
 
     if (pw) {
       const token = await sign({ scope: scopeOf(t), exp: Date.now() + UNLOCK_TTL }, c.env.COOKIE_SECRET);
-      setCookie(c, UNLOCK_COOKIE, token, {
+      setCookie(c, cookieName(c, UNLOCK_COOKIE), token, {
         httpOnly: true, secure: true, sameSite: 'Lax', path: '/', maxAge: UNLOCK_TTL / 1000,
       });
     }
@@ -203,9 +205,13 @@ export function reviewerRoutes(resolve: Resolve) {
   r.post('/:key/join', async (c) => {
     const t = await load(c);
     if (!t) return c.json({ error: 'not found' }, 404);
+    // Each join can add a reviewer row: a link must not be a way to flood a project.
+    if (await overLimit(c.env.UNLOCK_LIMIT, `join:${visitor(c)}`)) {
+      return c.json({ error: 'too many attempts' }, 429);
+    }
 
     if (passwordFor(t)) {
-      const unlock = await unsign<{ scope: string }>(getCookie(c, UNLOCK_COOKIE), c.env.COOKIE_SECRET);
+      const unlock = await unsign<{ scope: string }>(getCookie(c, cookieName(c, UNLOCK_COOKIE)), c.env.COOKIE_SECRET);
       if (unlock?.scope !== scopeOf(t)) return c.json({ error: 'locked' }, 403);
     }
 
@@ -250,7 +256,7 @@ export function reviewerRoutes(resolve: Resolve) {
         ? prior
         : { rid: reviewerId, pid: t.project.id, all: false, albums: [] as string[] };
     await issueReviewerCookie(c, extend(base, t));
-    deleteCookie(c, UNLOCK_COOKIE, { path: '/' });
+    dropCookie(c, UNLOCK_COOKIE);
 
     return c.json({ name: existing?.display_name ?? name, returning: !!existing });
   });

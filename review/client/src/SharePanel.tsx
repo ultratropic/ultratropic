@@ -9,8 +9,8 @@ export interface ShareState {
 
 /**
  * A client link shows one album and nothing else. The token is minted on first
- * share and never changes, so a link already sent keeps working through password
- * changes.
+ * share and kept, so a link already sent keeps working through password
+ * changes, until the owner replaces it.
  */
 export default function SharePanel({
   albumId,
@@ -28,13 +28,14 @@ export default function SharePanel({
   const [error, setError] = useState('');
   const link = state.shareToken ? `${location.origin}/a/${state.shareToken}` : null;
 
-  async function save(password: string | null | undefined) {
+  async function save(password: string | null | undefined, rotate = false) {
     setBusy(true);
     setError('');
     try {
+      const body = { ...(password === undefined ? {} : { password }), ...(rotate ? { rotate } : {}) };
       const res = await api<{ shareToken: string; hasPassword: boolean }>(
         `/api/admin/albums/${albumId}/share`,
-        { method: 'POST', body: JSON.stringify(password === undefined ? {} : { password }) },
+        { method: 'POST', body: JSON.stringify(body) },
       );
       setPw('');
       onSaved(res);
@@ -78,6 +79,12 @@ export default function SharePanel({
               <button className="ghost" disabled={busy} onClick={() => save(null)}>Remove</button>
             )}
           </div>
+          <p className="meta" style={{ margin: '14px 0 0' }}>
+            Link went somewhere it shouldn't?{' '}
+            <button className="text-btn" disabled={busy} onClick={() => {
+              if (confirm('Replace this link? The current one stops working for everyone, including people already in. Send the new link to whoever should keep access.')) save(undefined, true);
+            }}>Replace link</button>
+          </p>
         </>
       )}
     </div>

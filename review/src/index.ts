@@ -40,15 +40,28 @@ app.use('*', async (c, next) => {
 
 app.get('/api/health', async (c) => {
   // Touch both bindings so a misconfigured deploy fails loudly here, not mid-upload.
-  const db = await c.env.DB.prepare('SELECT COUNT(*) AS n FROM projects').first<{ n: number }>();
-  let bucket: string;
-  try {
-    await c.env.BUCKET.head('__healthcheck__');
-    bucket = 'ok';
-  } catch (err) {
-    bucket = `error: ${(err as Error).message}`;
+  // Public, so it says only whether each works: no counts, no error text.
+  const db = await c.env.DB.prepare('SELECT 1').first().then(() => 'ok', () => 'error');
+  const bucket = await c.env.BUCKET.head('__healthcheck__').then(() => 'ok', () => 'error');
+  return c.json({ ok: db === 'ok' && bucket === 'ok', db, bucket });
+});
+
+/**
+ * Cross-site request refusal. Cookies are SameSite=Lax, but "site" means the
+ * whole of ultra-tropic.com: a page on any other subdomain counts as same-site
+ * and would carry them. So anything that changes data must come from this exact
+ * origin — the browser says where a request came from, and a page can't lie
+ * about it. Requests with neither header (curl, scripts) carry no browser
+ * cookies to abuse.
+ */
+app.use('/api/*', async (c, next) => {
+  if (c.req.method === 'GET' || c.req.method === 'HEAD') return next();
+  const fetchSite = c.req.header('sec-fetch-site');
+  const origin = c.req.header('origin');
+  if ((fetchSite && fetchSite !== 'same-origin') || (origin && origin !== new URL(c.req.url).origin)) {
+    return c.json({ error: 'cross-site request refused' }, 403);
   }
-  return c.json({ ok: true, projects: db?.n ?? 0, bucket });
+  await next();
 });
 
 /**
@@ -165,8 +178,15 @@ app.all('/api/*', (c) => c.json({ error: 'not found' }, 404));
 // run_worker_first). Signed out, / is the landing page; signed in, the app.
 // The internal deployment has none of them: it's just the app.
 const SITE: Record<string, (env: Env) => Response> = { '/pricing': pricing, '/terms': terms, '/privacy': privacy, '/refunds': refunds };
-app.get('/', async (c) =>
-  c.env.MODE === 'public' && !(await readOwner(c)) ? landing(c.env) : c.env.ASSETS.fetch(c.req.raw));
+app.get('/', async (c) => {
+  if (c.env.MODE !== 'public' || (await readOwner(c))) return c.env.ASSETS.fetch(c.req.raw);
+  // The same address is the app once signed in: a kept copy of the landing page
+  // would greet someone who just signed in, so the browser must always ask.
+  const res = landing(c.env);
+  res.headers.set('cache-control', 'no-cache');
+  res.headers.set('vary', 'cookie');
+  return res;
+});
 for (const [path, page] of Object.entries(SITE)) {
   app.get(path, (c) => (c.env.MODE === 'public' ? page(c.env) : c.env.ASSETS.fetch(c.req.raw)));
 }
