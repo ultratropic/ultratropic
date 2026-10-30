@@ -7,7 +7,11 @@
   "assets": {
     "directory": "./dist/client",
     "binding": "ASSETS",
-    "not_found_handling": "single-page-application"
+    "not_found_handling": "single-page-application",
+    // Paths the Worker answers before the asset store. Anything not listed is
+    // served as a static file or the SPA and never reaches the Worker, so every
+    // Worker route must be here: the API, photos, and the public site's pages.
+    "run_worker_first": ["/api/*", "/i/*", "/", "/pricing", "/terms", "/privacy", "/refunds"]
   },
   "observability": { "enabled": true },
   // How your own selects are labelled for reviewers and in exports. Rename per
@@ -66,6 +70,36 @@
       "ratelimits": [
         { "name": "LOGIN_LIMIT", "namespace_id": "2001", "simple": { "limit": 10, "period": 60 } },
         { "name": "UNLOCK_LIMIT", "namespace_id": "2002", "simple": { "limit": 20, "period": 60 } }
+      ],
+      "send_email": [{ "name": "EMAIL" }]
+    },
+    // The live public product. Invite-only (SIGNUP_ALLOWLIST) until launch.
+    // Deploy: npm run deploy:public.
+    "public": {
+      "name": "dumbox",
+      "vars": {
+        "ADMIN_NAME": "Dumbox",
+        "MODE": "public",
+        "PRODUCT_NAME": "Dumbox",
+        "MAIL_FROM": "dumbox@ultra-tropic.com"
+      },
+      "routes": [
+        { "pattern": "dumbox.ultra-tropic.com", "custom_domain": true }
+      ],
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "dumbox-db",
+          "database_id": "86b8aa46-6e21-4abd-a71a-642a79796f9c",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "r2_buckets": [
+        { "binding": "BUCKET", "bucket_name": "dumbox-images" }
+      ],
+      "ratelimits": [
+        { "name": "LOGIN_LIMIT", "namespace_id": "3001", "simple": { "limit": 10, "period": 60 } },
+        { "name": "UNLOCK_LIMIT", "namespace_id": "3002", "simple": { "limit": 20, "period": 60 } }
       ],
       "send_email": [{ "name": "EMAIL" }]
     }

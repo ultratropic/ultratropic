@@ -8,6 +8,7 @@
     "preview": "npm run build && wrangler dev",
     "deploy": "npm run build && wrangler deploy",
     "deploy:staging": "npm run build && wrangler deploy --env staging",
+    "deploy:public": "npm run build && wrangler deploy --env public",
     "db:local": "wrangler d1 migrations apply review-db --local",
     "db:remote": "wrangler d1 migrations apply review-db --remote",
     "typecheck": "tsc --noEmit",

@@ -5,6 +5,7 @@ import selectionRoutes from './routes/selections';
 import { reviewerRoutes, byProjectSlug, byAlbumToken } from './routes/reviewer';
 import exportRoutes from './routes/export';
 import authRoutes from './routes/auth';
+import { landing, pricing, terms, privacy, refunds } from './site/pages';
 import { readOwner, readReviewerFor, canSeeAlbum, hasAnyReviewerCookie } from './lib/auth';
 import { ownerGate } from './lib/owner';
 import type { Env, Vars } from './types';
@@ -159,6 +160,16 @@ app.route('/api/p', reviewerRoutes(byProjectSlug));
 app.route('/api/a', reviewerRoutes(byAlbumToken));
 
 app.all('/api/*', (c) => c.json({ error: 'not found' }, 404));
+
+// The public product's own pages (run before the asset store, see wrangler
+// run_worker_first). Signed out, / is the landing page; signed in, the app.
+// The internal deployment has none of them: it's just the app.
+const SITE: Record<string, (env: Env) => Response> = { '/pricing': pricing, '/terms': terms, '/privacy': privacy, '/refunds': refunds };
+app.get('/', async (c) =>
+  c.env.MODE === 'public' && !(await readOwner(c)) ? landing(c.env) : c.env.ASSETS.fetch(c.req.raw));
+for (const [path, page] of Object.entries(SITE)) {
+  app.get(path, (c) => (c.env.MODE === 'public' ? page(c.env) : c.env.ASSETS.fetch(c.req.raw)));
+}
 
 // Everything else is the SPA, served from Workers Assets.
 app.get('*', (c) => c.env.ASSETS.fetch(c.req.raw));

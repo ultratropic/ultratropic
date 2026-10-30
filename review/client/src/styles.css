@@ -27,14 +27,14 @@ body {
 h1 { font-size: 22px; font-weight: 500; letter-spacing: -0.01em; margin: 0 0 4px; }
 .sub { color: var(--muted); font-size: 13px; margin: 0 0 40px; }
 label { display: block; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
-input[type='text'], input[type='password'] {
+input[type='text'], input[type='password'], input[type='email'] {
   width: 100%; padding: 11px 13px; font-size: 15px; font-family: inherit;
   background: var(--bg); color: var(--fg);
   border: 1px solid var(--line); border-radius: 3px;
 }
 input:focus { outline: none; border-color: var(--accent); }
 /* iOS zooms the whole page into any field under 16px when it's tapped. */
-@media (max-width: 760px) { input[type='text'], input[type='password'] { font-size: 16px; } }
+@media (max-width: 760px) { input[type='text'], input[type='password'], input[type='email'] { font-size: 16px; } }
 .field { margin-bottom: 20px; }
 button {
   padding: 11px 20px; font: inherit; font-size: 14px; cursor: pointer;
