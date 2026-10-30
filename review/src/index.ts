@@ -4,6 +4,7 @@ import uploadRoutes from './routes/upload';
 import selectionRoutes from './routes/selections';
 import { reviewerRoutes, byProjectSlug, byAlbumToken } from './routes/reviewer';
 import exportRoutes from './routes/export';
+import authRoutes from './routes/auth';
 import { readOwner, readReviewerFor, canSeeAlbum, hasAnyReviewerCookie } from './lib/auth';
 import { ownerGate } from './lib/owner';
 import type { Env, Vars } from './types';
@@ -146,6 +147,8 @@ app.onError((err, c) => {
   return c.json({ error: 'something went wrong' }, 500);
 });
 
+// Sign-in by email link (public product) and the pre-sign-in config.
+app.route('/api', authRoutes);
 // Every owner route, in every router below, sits behind this one check.
 app.use('/api/admin/*', ownerGate);
 app.route('/api/admin', adminRoutes);

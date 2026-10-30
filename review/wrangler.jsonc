@@ -34,5 +34,40 @@
   ],
   "r2_buckets": [
     { "binding": "BUCKET", "bucket_name": "review-images" }
-  ]
+  ],
+
+  // The public product (temporary name Dumbox) runs this same code in its own
+  // Worker, database and bucket, so customers' data never shares storage with
+  // the internal deployment's. Staging: invite-only (SIGNUP_ALLOWLIST secret).
+  // Deploy: npm run deploy:staging. Bindings don't inherit, so each is restated.
+  "env": {
+    "staging": {
+      "name": "dumbox-staging",
+      "vars": {
+        "ADMIN_NAME": "Dumbox",
+        "MODE": "public",
+        "PRODUCT_NAME": "Dumbox",
+        "MAIL_FROM": "dumbox@ultra-tropic.com"
+      },
+      "routes": [
+        { "pattern": "dumbox-staging.ultra-tropic.com", "custom_domain": true }
+      ],
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "dumbox-staging-db",
+          "database_id": "ab0087f9-75ec-424c-965f-2e4e2072f5b7",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "r2_buckets": [
+        { "binding": "BUCKET", "bucket_name": "dumbox-staging-images" }
+      ],
+      "ratelimits": [
+        { "name": "LOGIN_LIMIT", "namespace_id": "2001", "simple": { "limit": 10, "period": 60 } },
+        { "name": "UNLOCK_LIMIT", "namespace_id": "2002", "simple": { "limit": 20, "period": 60 } }
+      ],
+      "send_email": [{ "name": "EMAIL" }]
+    }
+  }
 }

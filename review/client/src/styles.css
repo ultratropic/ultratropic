@@ -293,6 +293,9 @@ button.ghost.danger:hover { border-color: #c0392b; }
   mask: url('/brand/ultratropic.png') no-repeat left center / contain;
 }
 
+/* The public product's name, where the internal build shows the Ultratropic mark. */
+.wordmark { display: block; flex-shrink: 0; font-weight: 600; letter-spacing: -0.02em; line-height: 1; color: var(--fg); }
+
 /* ---- project page: list / grid ---- */
 /* One width for list and grid, so switching views never moves the page. */
 .dash { max-width: 960px; }

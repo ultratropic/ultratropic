@@ -14,6 +14,17 @@ export interface Env {
   ADMIN_NAME: string;
   LOGIN_LIMIT: RateLimit;
   UNLOCK_LIMIT: RateLimit;
+  /** Public product: its name in the UI and emails (e.g. "Dumbox"). */
+  PRODUCT_NAME?: string;
+  /** Public product: transactional email (sign-in links). */
+  EMAIL?: SendEmail;
+  MAIL_FROM?: string;
+  /**
+   * Invite-only sign-up: comma-separated addresses (or "@domain.com") allowed
+   * to create an account. Unset = anyone may sign up. Existing accounts can
+   * always sign in.
+   */
+  SIGNUP_ALLOWLIST?: string;
 }
 
 /** A signed-in person running projects: who they are, and which workspace they're in. */

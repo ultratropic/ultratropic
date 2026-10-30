@@ -2,6 +2,8 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
 import ReviewerApp from './ReviewerApp';
+import SignIn from './SignIn';
+import { loadBrand } from './brand';
 import { uploadFiles } from './uploadPipeline';
 import './styles.css';
 
@@ -12,8 +14,10 @@ import './styles.css';
 // /p/<slug> is the project link (every album); /a/<token> is a client album link.
 const match = window.location.pathname.match(/^\/(p|a)\/([A-Za-z0-9]+)/);
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    {match ? <ReviewerApp base={`/api/${match[1]}/${match[2]}`} /> : <App />}
-  </StrictMode>,
-);
+void loadBrand().then(() =>
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      {match ? <ReviewerApp base={`/api/${match[1]}/${match[2]}`} />
+        : location.pathname === '/signin' ? <SignIn /> : <App />}
+    </StrictMode>,
+  ));

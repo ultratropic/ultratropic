@@ -2,8 +2,61 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError, type Project } from './api';
 import Gallery from './Gallery';
 import Logo from './Logo';
+import { brand } from './brand';
+
+/** The public product: no password, a link by email. */
+function EmailLogin() {
+  const [email, setEmail] = useState('');
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setErr('');
+    try {
+      await api('/api/auth/start', { method: 'POST', body: JSON.stringify({ email }) });
+      setSent(true);
+    } catch (error) {
+      setErr(error instanceof ApiError ? error.message : 'Something went wrong. Try again.');
+    }
+    setBusy(false);
+  }
+
+  return (
+    <div className="wrap" style={{ maxWidth: 340 }}>
+      <Logo width={150} style={{ marginBottom: 14 }} />
+      {sent ? (
+        <>
+          <p className="sub">Check your email</p>
+          <p>We sent a sign-in link to <strong>{email}</strong>. It works once, for 20 minutes.</p>
+          <button className="ghost" onClick={() => setSent(false)}>Use a different address</button>
+        </>
+      ) : (
+        <>
+          <p className="sub">Sign in or create an account</p>
+          <form onSubmit={submit}>
+            <div className="field">
+              <label htmlFor="em">Email</label>
+              <input id="em" type="email" autoComplete="email" value={email} autoFocus
+                onChange={(e) => setEmail(e.target.value)} />
+            </div>
+            <button disabled={busy || !email.trim()}>{busy ? 'Sending…' : 'Email me a sign-in link'}</button>
+            {err && <p className="err">{err}</p>}
+          </form>
+        </>
+      )}
+    </div>
+  );
+}
 
 function Login({ onDone }: { onDone: () => void }) {
+  if (brand.mode === 'public') return <EmailLogin />;
+  return <PasswordLogin onDone={onDone} />;
+}
+
+function PasswordLogin({ onDone }: { onDone: () => void }) {
   const [password, setPassword] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
@@ -153,7 +206,7 @@ export default function App() {
       <div className="dash-head">
         <div>
           <Logo width={150} style={{ marginBottom: 14 }} />
-          <p className="sub" style={{ margin: 0 }}>Review · Projects</p>
+          <p className="sub" style={{ margin: 0 }}>{brand.mode === 'public' ? 'Projects' : 'Review · Projects'}</p>
         </div>
         {projects.length > 0 && (
           <div className="view-toggle" role="group" aria-label="Layout">

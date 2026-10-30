@@ -7,6 +7,7 @@
     "build": "npm run c1 && tsc -b && vite build",
     "preview": "npm run build && wrangler dev",
     "deploy": "npm run build && wrangler deploy",
+    "deploy:staging": "npm run build && wrangler deploy --env staging",
     "db:local": "wrangler d1 migrations apply review-db --local",
     "db:remote": "wrangler d1 migrations apply review-db --remote",
     "typecheck": "tsc --noEmit",
