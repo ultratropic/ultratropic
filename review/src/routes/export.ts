@@ -1,5 +1,4 @@
 import { Hono } from 'hono';
-import { readAdmin } from '../lib/auth';
 import { slugify } from '../lib/ids';
 import { rawMatch, talentGroupName, talentLabel } from '../../shared/names';
 import { selectedByEveryone } from '../../shared/everyone';
@@ -7,11 +6,6 @@ import { listProjectNotes, notesLine } from '../lib/notes';
 import type { Env, Vars } from '../types';
 
 const exp = new Hono<{ Bindings: Env; Variables: Vars }>();
-
-exp.use('*', async (c, next) => {
-  if (!(await readAdmin(c))) return c.json({ error: 'unauthorized' }, 401);
-  await next();
-});
 
 function csvField(value: string): string {
   return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;

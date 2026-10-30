@@ -1,21 +1,16 @@
 import { Hono } from 'hono';
 import { ulid, token, slugify } from '../lib/ids';
 import { hashPassword, timingSafeEqual } from '../lib/crypto';
-import { issueAdminCookie, readAdmin, clearAdminCookie, overLimit, visitor } from '../lib/auth';
+import { issueOwnerCookie, clearAdminCookie, overLimit, visitor } from '../lib/auth';
+import { owner } from '../lib/owner';
+import { INTERNAL_OWNER, INTERNAL_WORKSPACE } from '../types';
 import type { Env, Vars } from '../types';
 
 const admin = new Hono<{ Bindings: Env; Variables: Vars }>();
 
-/** Everything under /api/admin except login requires the admin cookie. */
-admin.use('*', async (c, next) => {
-  if (c.req.path.endsWith('/login')) return next();
-  const session = await readAdmin(c);
-  if (!session) return c.json({ error: 'unauthorized' }, 401);
-  c.set('admin', session);
-  await next();
-});
-
+/** The internal deployment's password sign-in. The public product signs in by email instead. */
 admin.post('/login', async (c) => {
+  if (c.env.MODE === 'public') return c.json({ error: 'not found' }, 404);
   if (await overLimit(c.env.LOGIN_LIMIT, `login:${visitor(c)}`)) {
     return c.json({ error: 'too many attempts' }, 429);
   }
@@ -23,7 +18,7 @@ admin.post('/login', async (c) => {
   if (!password || !timingSafeEqual(password, c.env.ADMIN_PASSWORD)) {
     return c.json({ error: 'invalid password' }, 401);
   }
-  await issueAdminCookie(c);
+  await issueOwnerCookie(c, INTERNAL_OWNER, INTERNAL_WORKSPACE);
   return c.json({ ok: true });
 });
 
@@ -32,7 +27,15 @@ admin.post('/logout', (c) => {
   return c.json({ ok: true });
 });
 
-admin.get('/me', (c) => c.json({ admin: true }));
+admin.get('/me', async (c) => {
+  const { uid, wid } = owner(c);
+  const row = await c.env.DB.prepare(
+    `SELECT w.name AS workspace, u.name AS name FROM workspaces w, users u WHERE w.id = ? AND u.id = ?`,
+  )
+    .bind(wid, uid)
+    .first<{ workspace: string; name: string | null }>();
+  return c.json({ admin: true, mode: c.env.MODE ?? 'internal', workspace: row?.workspace ?? null, name: row?.name ?? null });
+});
 
 /** Dashboard: projects with album/image/reviewer/select counts in one round trip. */
 admin.get('/projects', async (c) => {
@@ -50,8 +53,11 @@ admin.get('/projects', async (c) => {
                 WHERE fi.project_id = p.id ORDER BY fa.seq, fi.seq LIMIT 1)
             ) AS cover_thumb
        FROM projects p
+      WHERE p.workspace_id = ?
       ORDER BY p.created_at DESC`,
-  ).all();
+  )
+    .bind(owner(c).wid)
+    .all();
   return c.json({ projects: results });
 });
 
@@ -77,10 +83,10 @@ admin.post('/projects', async (c) => {
   }
 
   await c.env.DB.prepare(
-    `INSERT INTO projects (id, slug, name, description, password_hash, password_salt, preview_edge, status, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
+    `INSERT INTO projects (id, slug, name, description, password_hash, password_salt, preview_edge, status, created_at, workspace_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
   )
-    .bind(id, slug, name, body.description?.trim() || null, hash, salt, previewEdge, Date.now())
+    .bind(id, slug, name, body.description?.trim() || null, hash, salt, previewEdge, Date.now(), owner(c).wid)
     .run();
 
   return c.json({ id, slug, name, url: `/p/${slug}` }, 201);
@@ -180,11 +186,11 @@ admin.delete('/projects/:id', async (c) => {
  * The owner's own identity can't be removed this way.
  */
 admin.delete('/reviewers/:id', async (c) => {
-  const r = await c.env.DB.prepare(`SELECT id, display_name, email_norm FROM reviewers WHERE id = ?`)
+  const r = await c.env.DB.prepare(`SELECT id, display_name, user_id FROM reviewers WHERE id = ?`)
     .bind(c.req.param('id'))
-    .first<{ id: string; display_name: string; email_norm: string }>();
+    .first<{ id: string; display_name: string; user_id: string | null }>();
   if (!r) return c.json({ error: 'reviewer not found' }, 404);
-  if (r.email_norm === '__admin__') return c.json({ error: "can't remove the owner" }, 400);
+  if (r.user_id) return c.json({ error: "can't remove the owner" }, 400);
 
   const removed = await c.env.DB.prepare(`SELECT COUNT(*) n FROM selections WHERE reviewer_id = ?`)
     .bind(r.id)
@@ -217,7 +223,7 @@ admin.post('/projects/:pid/reset', async (c) => {
 
   const [sel, rev] = await Promise.all([
     c.env.DB.prepare(`SELECT COUNT(*) n FROM selections WHERE project_id = ?`).bind(projectId).first<{ n: number }>(),
-    c.env.DB.prepare(`SELECT COUNT(*) n FROM reviewers WHERE project_id = ? AND email_norm != '__admin__'`)
+    c.env.DB.prepare(`SELECT COUNT(*) n FROM reviewers WHERE project_id = ? AND user_id IS NULL`)
       .bind(projectId)
       .first<{ n: number }>(),
   ]);
@@ -225,10 +231,10 @@ admin.post('/projects/:pid/reset', async (c) => {
     c.env.DB.prepare(`DELETE FROM selections WHERE project_id = ?`).bind(projectId),
     // Notes from the reviewers being removed go with them; the owner's stay.
     c.env.DB.prepare(
-      `DELETE FROM notes WHERE project_id = ?1 AND (reviewer_id IN (SELECT id FROM reviewers WHERE project_id = ?1 AND email_norm != '__admin__')
-         OR parent_id IN (SELECT id FROM notes WHERE reviewer_id IN (SELECT id FROM reviewers WHERE project_id = ?1 AND email_norm != '__admin__')))`,
+      `DELETE FROM notes WHERE project_id = ?1 AND (reviewer_id IN (SELECT id FROM reviewers WHERE project_id = ?1 AND user_id IS NULL)
+         OR parent_id IN (SELECT id FROM notes WHERE reviewer_id IN (SELECT id FROM reviewers WHERE project_id = ?1 AND user_id IS NULL)))`,
     ).bind(projectId),
-    c.env.DB.prepare(`DELETE FROM reviewers WHERE project_id = ? AND email_norm != '__admin__'`).bind(projectId),
+    c.env.DB.prepare(`DELETE FROM reviewers WHERE project_id = ? AND user_id IS NULL`).bind(projectId),
   ]);
   return c.json({ selectionsCleared: sel?.n ?? 0, reviewersRemoved: rev?.n ?? 0 });
 });

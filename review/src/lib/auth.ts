@@ -1,7 +1,8 @@
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import type { Context } from 'hono';
 import { sign, unsign } from './crypto';
-import type { AdminSession, Env, ReviewerSession, Vars } from '../types';
+import { INTERNAL_OWNER, INTERNAL_WORKSPACE } from '../types';
+import type { Env, OwnerSession, ReviewerSession, Vars } from '../types';
 
 export const ADMIN_COOKIE = 'rv_admin';
 const LEGACY_REVIEWER_COOKIE = 'rv_reviewer';
@@ -21,13 +22,24 @@ function cookieOpts(ttlMs: number) {
   };
 }
 
-export async function issueAdminCookie(c: Ctx): Promise<void> {
-  const session: AdminSession = { admin: true, exp: Date.now() + ADMIN_TTL };
+export async function issueOwnerCookie(c: Ctx, uid: string, wid: string): Promise<void> {
+  // `t` marks the kind: every cookie is signed with the same secret, so a value
+  // lifted from some other cookie must never read as an owner session.
+  const session = { t: 'owner', uid, wid, exp: Date.now() + ADMIN_TTL };
   setCookie(c, ADMIN_COOKIE, await sign(session, c.env.COOKIE_SECRET), cookieOpts(ADMIN_TTL));
 }
 
-export async function readAdmin(c: Ctx): Promise<AdminSession | null> {
-  return unsign<AdminSession>(getCookie(c, ADMIN_COOKIE), c.env.COOKIE_SECRET);
+/**
+ * The signed-in owner, if any. Signature and expiry only; the gate also checks
+ * they're still a member of the workspace. A cookie from before accounts
+ * ({ admin: true }) is the internal owner — only on the internal deployment.
+ */
+export async function readOwner(c: Ctx): Promise<OwnerSession | null> {
+  const s = await unsign<OwnerSession & { t?: string; admin?: true }>(getCookie(c, ADMIN_COOKIE), c.env.COOKIE_SECRET);
+  if (!s || typeof s.exp !== 'number') return null;
+  if (s.t === 'owner' && typeof s.uid === 'string' && typeof s.wid === 'string') return { uid: s.uid, wid: s.wid, exp: s.exp };
+  if (s.admin === true && c.env.MODE !== 'public') return { uid: INTERNAL_OWNER, wid: INTERNAL_WORKSPACE, exp: s.exp };
+  return null;
 }
 
 export function clearAdminCookie(c: Ctx): void {

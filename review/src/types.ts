@@ -2,6 +2,12 @@ export interface Env {
   DB: D1Database;
   BUCKET: R2Bucket;
   ASSETS: Fetcher;
+  /**
+   * 'internal': the studio's own deployment — one workspace, signed into with
+   * ADMIN_PASSWORD, no billing. 'public': the product — one workspace per
+   * customer, email sign-in. Same code either way.
+   */
+  MODE: 'internal' | 'public';
   ADMIN_PASSWORD: string;
   COOKIE_SECRET: string;
   /** Default display name for the owner's selects, e.g. the studio name. */
@@ -10,8 +16,10 @@ export interface Env {
   UNLOCK_LIMIT: RateLimit;
 }
 
-export interface AdminSession {
-  admin: true;
+/** A signed-in person running projects: who they are, and which workspace they're in. */
+export interface OwnerSession {
+  uid: string;
+  wid: string;
   exp: number;
 }
 
@@ -30,5 +38,9 @@ export interface ReviewerSession {
 }
 
 export type Vars = {
-  admin?: AdminSession;
+  owner?: { uid: string; wid: string };
 };
+
+/** The internal deployment's one workspace and its owner (seeded by migration 0011). */
+export const INTERNAL_WORKSPACE = 'internal';
+export const INTERNAL_OWNER = 'owner';

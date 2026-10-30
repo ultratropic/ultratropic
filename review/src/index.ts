@@ -4,7 +4,8 @@ import uploadRoutes from './routes/upload';
 import selectionRoutes from './routes/selections';
 import { reviewerRoutes, byProjectSlug, byAlbumToken } from './routes/reviewer';
 import exportRoutes from './routes/export';
-import { readAdmin, readReviewerFor, canSeeAlbum, hasAnyReviewerCookie } from './lib/auth';
+import { readOwner, readReviewerFor, canSeeAlbum, hasAnyReviewerCookie } from './lib/auth';
+import { ownerGate } from './lib/owner';
 import type { Env, Vars } from './types';
 
 const app = new Hono<{ Bindings: Env; Variables: Vars }>();
@@ -57,24 +58,31 @@ app.get('/i/:key', async (c) => {
   const key = c.req.param('key');
   if (!/^[A-Za-z0-9]{32}$/.test(key)) return c.text('not found', 404);
 
-  // The owner sees everything. Anyone else must hold a session for the project
-  // this frame belongs to, covering its album — so neither a reviewer of another
-  // shoot nor a client of another album can fetch it, even holding the key.
-  const admin = await readAdmin(c);
-  if (!admin) {
-    if (!hasAnyReviewerCookie(c)) return c.text('unauthorized', 401);
-    const owner = await c.env.DB.prepare(
-      `SELECT project_id, album_id FROM images WHERE thumb_key = ?1 OR preview_key = ?1 LIMIT 1`,
-    )
-      .bind(key)
-      .first<{ project_id: string; album_id: string }>();
-    if (!owner) return c.text('not found', 404);
-    const session = await readReviewerFor(c, owner.project_id);
-    if (!session || !canSeeAlbum(session, owner.album_id)) return c.text('not found', 404);
+  // A signed-in owner sees every frame in their own workspace. Anyone else must
+  // hold a session for the project this frame belongs to, covering its album —
+  // so neither a reviewer of another shoot nor a client of another album, nor
+  // another customer, can fetch it, even holding the key.
+  const ownerSession = await readOwner(c);
+  if (!ownerSession && !hasAnyReviewerCookie(c)) return c.text('unauthorized', 401);
+  const frame = await c.env.DB.prepare(
+    `SELECT i.project_id, i.album_id, p.workspace_id
+       FROM images i JOIN projects p ON p.id = i.project_id
+      WHERE i.thumb_key = ?1 OR i.preview_key = ?1 LIMIT 1`,
+  )
+    .bind(key)
+    .first<{ project_id: string; album_id: string; workspace_id: string | null }>();
+  if (!frame) return c.text('not found', 404);
+  const ownsIt = !!ownerSession && frame.workspace_id === ownerSession.wid &&
+    !!(await c.env.DB.prepare(`SELECT 1 FROM members WHERE workspace_id = ? AND user_id = ?`)
+      .bind(ownerSession.wid, ownerSession.uid)
+      .first());
+  if (!ownsIt) {
+    const session = await readReviewerFor(c, frame.project_id);
+    if (!session || !canSeeAlbum(session, frame.album_id)) return c.text('not found', 404);
     // A removed reviewer's cookie is still validly signed: check they still exist,
     // or they could keep loading photos whose addresses they'd already seen.
     const live = await c.env.DB.prepare(`SELECT 1 FROM reviewers WHERE id = ? AND project_id = ?`)
-      .bind(session.rid, owner.project_id)
+      .bind(session.rid, frame.project_id)
       .first();
     if (!live) return c.text('not found', 404);
   }
@@ -138,6 +146,8 @@ app.onError((err, c) => {
   return c.json({ error: 'something went wrong' }, 500);
 });
 
+// Every owner route, in every router below, sits behind this one check.
+app.use('/api/admin/*', ownerGate);
 app.route('/api/admin', adminRoutes);
 app.route('/api/admin', uploadRoutes);
 app.route('/api/admin', selectionRoutes);

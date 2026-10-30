@@ -1,37 +1,37 @@
 import { Hono } from 'hono';
 import { ulid } from '../lib/ids';
-import { readAdmin } from '../lib/auth';
+import { owner } from '../lib/owner';
 import { buildGallery } from '../lib/gallery';
 import { listNotes, listProjectNotes, addNote, noteImage, resolveNote, deleteNote } from '../lib/notes';
+import { INTERNAL_OWNER } from '../types';
 import type { Env, Vars } from '../types';
+import type { Context } from 'hono';
+
+type Ctx = Context<{ Bindings: Env; Variables: Vars }>;
 
 const sel = new Hono<{ Bindings: Env; Variables: Vars }>();
 
-sel.use('*', async (c, next) => {
-  const session = await readAdmin(c);
-  if (!session) return c.json({ error: 'unauthorized' }, 401);
-  c.set('admin', session);
-  await next();
-});
-
 /**
- * The admin selects too, so they need a reviewer identity like anyone else —
- * the whole point of the model is that nobody's picks overwrite anybody else's.
- * A reserved address keeps that row from ever colliding with a real reviewer's
- * email, which is what identifies reviewers within a project.
+ * The people running a project select too, so each needs a reviewer identity
+ * like anyone else — the whole point of the model is that nobody's picks
+ * overwrite anybody else's. The row is tied to their account (user_id), and
+ * its reserved address can never collide with a real reviewer's email, which
+ * is what identifies reviewers within a project. The internal owner keeps the
+ * address its picks were made under before accounts existed.
  */
-const ADMIN_EMAIL = '__admin__';
+const ownerAddress = (uid: string) => (uid === INTERNAL_OWNER ? '__admin__' : `__user__:${uid}`);
 
-async function adminReviewer(c: { env: Env }, projectId: string, name?: string): Promise<string | null> {
+async function adminReviewer(c: Ctx, projectId: string, name?: string): Promise<string | null> {
   // Never mint an identity in a project that doesn't exist: the insert would
   // fail its foreign key and surface as a 500 instead of a 404.
   const project = await c.env.DB.prepare(`SELECT id FROM projects WHERE id = ?`).bind(projectId).first();
   if (!project) return null;
+  const { uid, wid } = owner(c);
   const now = Date.now();
   const existing = await c.env.DB.prepare(
-    `SELECT id FROM reviewers WHERE project_id = ? AND email_norm = ?`,
+    `SELECT id FROM reviewers WHERE project_id = ? AND user_id = ?`,
   )
-    .bind(projectId, ADMIN_EMAIL)
+    .bind(projectId, uid)
     .first<{ id: string }>();
 
   if (existing) {
@@ -47,12 +47,19 @@ async function adminReviewer(c: { env: Env }, projectId: string, name?: string):
     return existing.id;
   }
 
+  // First visit: named after the person, else their workspace (the studio).
+  const who = await c.env.DB.prepare(
+    `SELECT u.name AS person, w.name AS studio FROM users u, workspaces w WHERE u.id = ? AND w.id = ?`,
+  )
+    .bind(uid, wid)
+    .first<{ person: string | null; studio: string | null }>();
   const id = ulid();
   await c.env.DB.prepare(
-    `INSERT INTO reviewers (id, project_id, email_norm, display_name, created_at, last_seen_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO reviewers (id, project_id, email_norm, display_name, created_at, last_seen_at, user_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
   )
-    .bind(id, projectId, ADMIN_EMAIL, name?.trim() || c.env.ADMIN_NAME || 'Ultratropic', now, now)
+    .bind(id, projectId, ownerAddress(uid),
+      name?.trim() || who?.person || who?.studio || c.env.ADMIN_NAME || 'Owner', now, now, uid)
     .run();
   return id;
 }

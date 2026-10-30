@@ -1,16 +1,9 @@
 import { Hono } from 'hono';
 import { ulid, storageKey, baseName } from '../lib/ids';
-import { readAdmin } from '../lib/auth';
+import { owner } from '../lib/owner';
 import type { Env, Vars } from '../types';
 
 const upload = new Hono<{ Bindings: Env; Variables: Vars }>();
-
-upload.use('*', async (c, next) => {
-  const session = await readAdmin(c);
-  if (!session) return c.json({ error: 'unauthorized' }, 401);
-  c.set('admin', session);
-  await next();
-});
 
 const MAX_BLOB_BYTES = 12 * 1024 * 1024; // a 2400px WebP is ~300KB; 12MB is a generous ceiling
 const ALLOWED_TYPES = new Set(['image/webp', 'image/jpeg']);
@@ -30,6 +23,11 @@ upload.put('/blob', async (c) => {
 
   const key = storageKey();
   await c.env.BUCKET.put(key, body, { httpMetadata: { contentType } });
+  // Whose upload this is: a commit may only use its own workspace's keys, and
+  // storage is counted per workspace.
+  await c.env.DB.prepare(`INSERT INTO blobs (key, workspace_id, bytes, created_at) VALUES (?, ?, ?, ?)`)
+    .bind(key, owner(c).wid, body.byteLength, Date.now())
+    .run();
   return c.json({ key, bytes: body.byteLength }, 201);
 });
 
@@ -81,6 +79,26 @@ upload.post('/projects/:pid/images', async (c) => {
   const valid = new Set(validAlbums.map((a) => a.id));
   const invalid = albumIds.filter((id) => !valid.has(id));
   if (invalid.length) return c.json({ error: `album not in project: ${invalid.join(', ')}` }, 400);
+
+  // Every key must be one this workspace uploaded — or, for a replayed batch,
+  // already a frame of this project. A key from anyone else's upload is refused,
+  // even if it leaked. Checked in chunks: D1 binds at most 100 values a query.
+  const keys = [...new Set(images.flatMap((i) => [i.thumbKey, i.previewKey]))];
+  const known = new Set<string>();
+  for (let i = 0; i < keys.length; i += 90) {
+    const chunk = keys.slice(i, i + 90);
+    const marks = chunk.map(() => '?').join(',');
+    const [own, here] = await c.env.DB.batch<{ key: string }>([
+      c.env.DB.prepare(`SELECT key FROM blobs WHERE workspace_id = ? AND key IN (${marks})`).bind(owner(c).wid, ...chunk),
+      c.env.DB.prepare(
+        `SELECT thumb_key AS key FROM images WHERE project_id = ?1 AND thumb_key IN (${chunk.map((_, j) => `?${j + 2}`).join(',')})
+         UNION SELECT preview_key FROM images WHERE project_id = ?1 AND preview_key IN (${chunk.map((_, j) => `?${j + 2}`).join(',')})`,
+      ).bind(projectId, ...chunk),
+    ]);
+    for (const r of [...own!.results, ...here!.results]) known.add(r.key);
+  }
+  const foreign = images.findIndex((i) => !known.has(i.thumbKey) || !known.has(i.previewKey));
+  if (foreign >= 0) return c.json({ error: `image ${foreign + 1}: unknown upload` }, 400);
 
   const now = Date.now();
   const stmt = c.env.DB.prepare(
