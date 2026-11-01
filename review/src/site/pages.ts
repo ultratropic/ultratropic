@@ -3,8 +3,8 @@ import { layout, LEGAL, esc } from './layout';
 
 const FEATURES: [string, string][] = [
   ['Everyone picks, nobody overwrites', 'The brand, the agency and your team each heart their own picks. Filter to what two or more people chose, or what everyone agreed on.'],
-  ['Built for a shoot', 'Albums per look or setup. Thousands of frames upload in minutes because photos are resized in your browser, and your originals never leave your machine.'],
-  ['No accounts for reviewers', 'Send a link. Reviewers type their name and start picking, on a laptop or a phone. Lock a client album with its own password if you like.'],
+  ['Fast and lightweight', 'Just upload your JPEGs and make albums per folder for different setups automatically. Thousands of frames upload in minutes because photos are resized in your browser, leaving your originals untouched.'],
+  ['Reviewers don\'t need an account', 'Send a link. Reviewers type their name and email address and start picking, on a laptop or a phone.'],
   ['Retouch notes', 'Pin a note on the spot that needs work, draw on the frame, and export a retouch sheet as a PDF for whoever is retouching.'],
   ['Casting', 'One tile per model, agencies as albums, links and availability on every face, and the same picks and filters.'],
   ['Back into Capture One', 'Pull everyone\'s selects straight into a Capture One album, or export a CSV that matches your RAW files.'],
@@ -19,7 +19,7 @@ export function landing(env: Env): Response {
     body: `
 <section class="hero">
   <h1>Selects, without the email thread.</h1>
-  <p>Share a shoot with the brand, the agency and your team. Everyone picks on their own, nobody overwrites anyone, and you see at a glance where they agree.</p>
+  <p>Your whole shoot, available immediately, light and fast, where everyone can see who likes what. So you can get to final selects faster.</p>
   <div class="actions">
     <a class="btn" href="/login">Start free</a>
     <a class="btn ghost" href="/pricing">See pricing</a>
