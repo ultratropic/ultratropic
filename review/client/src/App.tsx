@@ -4,8 +4,8 @@ import Gallery from './Gallery';
 import Logo from './Logo';
 import { brand } from './brand';
 
-/** The public product: no password, a link by email. */
-function EmailLogin() {
+/** No password, a link by email: everyone on the public product, and the internal deployment's other admins. */
+function EmailLogin({ onBack }: { onBack?: () => void }) {
   const [email, setEmail] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
@@ -35,7 +35,7 @@ function EmailLogin() {
         </>
       ) : (
         <>
-          <p className="sub">Sign in or create an account</p>
+          <p className="sub">{onBack ? 'Review · Admin' : 'Sign in or create an account'}</p>
           <form onSubmit={submit}>
             <div className="field">
               <label htmlFor="em">Email</label>
@@ -45,6 +45,7 @@ function EmailLogin() {
             <button disabled={busy || !email.trim()}>{busy ? 'Sending…' : 'Email me a sign-in link'}</button>
             {err && <p className="err">{err}</p>}
           </form>
+          {onBack && <p><button className="text-btn" onClick={onBack}>Sign in with the password instead</button></p>}
         </>
       )}
     </div>
@@ -52,11 +53,13 @@ function EmailLogin() {
 }
 
 function Login({ onDone }: { onDone: () => void }) {
+  const [byEmail, setByEmail] = useState(false);
   if (brand.mode === 'public') return <EmailLogin />;
-  return <PasswordLogin onDone={onDone} />;
+  if (byEmail) return <EmailLogin onBack={() => setByEmail(false)} />;
+  return <PasswordLogin onDone={onDone} onEmail={() => setByEmail(true)} />;
 }
 
-function PasswordLogin({ onDone }: { onDone: () => void }) {
+function PasswordLogin({ onDone, onEmail }: { onDone: () => void; onEmail: () => void }) {
   const [password, setPassword] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
@@ -89,6 +92,7 @@ function PasswordLogin({ onDone }: { onDone: () => void }) {
         <button disabled={busy || !password}>{busy ? 'Checking…' : 'Sign in'}</button>
         {err && <p className="err">{err}</p>}
       </form>
+      <p><button className="text-btn" onClick={onEmail}>Sign in with your email instead</button></p>
     </div>
   );
 }

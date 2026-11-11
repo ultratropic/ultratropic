@@ -47,6 +47,20 @@ async function adminReviewer(c: Ctx, projectId: string, name?: string): Promise<
     return existing.id;
   }
 
+  // Someone who reviewed this project by link before running it (same email)
+  // keeps that identity, so the picks they made then stay theirs.
+  if (uid !== INTERNAL_OWNER) {
+    const adopted = await c.env.DB.prepare(
+      `UPDATE reviewers SET user_id = ?1, last_seen_at = ?2
+        WHERE project_id = ?3 AND user_id IS NULL
+          AND email_norm = (SELECT email_norm FROM users WHERE id = ?1)
+        RETURNING id`,
+    )
+      .bind(uid, now, projectId)
+      .first<{ id: string }>();
+    if (adopted) return adopted.id;
+  }
+
   // First visit: named after the person, else their workspace (the studio).
   const who = await c.env.DB.prepare(
     `SELECT u.name AS person, w.name AS studio FROM users u, workspaces w WHERE u.id = ? AND w.id = ?`,

@@ -2,10 +2,12 @@ import { Hono } from 'hono';
 import { ulid, token } from '../lib/ids';
 import { issueOwnerCookie, overLimit, visitor } from '../lib/auth';
 import { sendMail, esc } from '../lib/mail';
+import { INTERNAL_WORKSPACE } from '../types';
 import type { Env, Vars } from '../types';
 
 /**
- * Sign-in by email link, for the public product. The token travels after the
+ * Sign-in by email link: everyone on the public product, and the internal
+ * deployment's admins other than its owner. The token travels after the
  * '#' of the link, which browsers never send to a server, and the page only
  * redeems it when the person presses Sign in — so mail scanners that open
  * links can neither see it nor use it up.
@@ -28,12 +30,24 @@ function invited(env: Env, email: string): boolean {
     .some((entry) => (entry.startsWith('@') ? email.endsWith(entry) : email === entry));
 }
 
+/**
+ * On the internal deployment the email link is for the studio's other admins
+ * (the owner keeps the password). Nobody signs up there: only someone already
+ * made a member of the internal workspace can ask for a link.
+ */
+async function internalAdmin(env: Env, email: string): Promise<{ id: string } | null> {
+  return env.DB.prepare(
+    `SELECT u.id FROM users u JOIN members m ON m.user_id = u.id AND m.workspace_id = ? WHERE u.email_norm = ?`,
+  )
+    .bind(INTERNAL_WORKSPACE, email)
+    .first<{ id: string }>();
+}
+
 /** What the client needs before anyone signs in: which product this is. */
 auth.get('/config', (c) =>
   c.json({ mode: c.env.MODE ?? 'internal', product: c.env.PRODUCT_NAME ?? 'Review' }));
 
 auth.post('/auth/start', async (c) => {
-  if (c.env.MODE !== 'public') return c.json({ error: 'not found' }, 404);
   if (await overLimit(c.env.LOGIN_LIMIT, `link:${visitor(c)}`)) {
     return c.json({ error: 'Too many attempts. Wait a minute and try again.' }, 429);
   }
@@ -42,9 +56,15 @@ auth.post('/auth/start', async (c) => {
   // Length first: the pattern backtracks, so a huge input must never reach it.
   if (email.length > 254 || !EMAIL.test(email)) return c.json({ error: 'Enter a valid email address.' }, 400);
 
-  const known = await c.env.DB.prepare(`SELECT 1 FROM users WHERE email_norm = ?`).bind(email).first();
-  if (!known && !invited(c.env, email)) {
-    return c.json({ error: "Sign-up is invite-only for now. Ask us for an invite." }, 403);
+  if (c.env.MODE !== 'public') {
+    if (!(await internalAdmin(c.env, email))) {
+      return c.json({ error: "This address can't sign in here. Ask the studio to add you." }, 403);
+    }
+  } else {
+    const known = await c.env.DB.prepare(`SELECT 1 FROM users WHERE email_norm = ?`).bind(email).first();
+    if (!known && !invited(c.env, email)) {
+      return c.json({ error: "Sign-up is invite-only for now. Ask us for an invite." }, 403);
+    }
   }
 
   const now = Date.now();
@@ -78,7 +98,6 @@ auth.post('/auth/start', async (c) => {
 });
 
 auth.post('/auth/verify', async (c) => {
-  if (c.env.MODE !== 'public') return c.json({ error: 'not found' }, 404);
   if (await overLimit(c.env.LOGIN_LIMIT, `verify:${visitor(c)}`)) {
     return c.json({ error: 'Too many attempts. Wait a minute and try again.' }, 429);
   }
@@ -94,6 +113,15 @@ auth.post('/auth/verify', async (c) => {
     .bind(now, await sha256(secret))
     .first<{ email_norm: string }>();
   if (!link) return c.json({ error: 'This sign-in link has expired or was already used. Ask for a new one.' }, 400);
+
+  if (c.env.MODE !== 'public') {
+    // Checked again here: someone removed after the link was sent stays out.
+    const admin = await internalAdmin(c.env, link.email_norm);
+    if (!admin) return c.json({ error: "This address can't sign in here. Ask the studio to add you." }, 403);
+    await c.env.DB.prepare(`UPDATE users SET last_login_at = ? WHERE id = ?`).bind(now, admin.id).run();
+    await issueOwnerCookie(c, admin.id, INTERNAL_WORKSPACE);
+    return c.json({ ok: true });
+  }
 
   let user = await c.env.DB.prepare(`SELECT id FROM users WHERE email_norm = ?`)
     .bind(link.email_norm)

@@ -23,7 +23,9 @@
   // MODE "internal": this studio's own deployment (admin password, one workspace,
   // no billing). The public product runs the same code with MODE "public",
   // under its own Worker, database and bucket (an env added here when it has a domain).
-  "vars": { "ADMIN_NAME": "Ultratropic", "MODE": "internal" },
+  "vars": { "ADMIN_NAME": "Ultratropic", "MODE": "internal", "MAIL_FROM": "review@ultra-tropic.com" },
+  // Sign-in links for admins other than the owner (members of the internal workspace).
+  "send_email": [{ "name": "EMAIL" }],
   "routes": [
     { "pattern": "review.ultra-tropic.com", "custom_domain": true }
   ],
