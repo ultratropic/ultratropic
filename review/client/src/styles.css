@@ -262,18 +262,28 @@ button.ghost.danger:hover { border-color: #c0392b; }
 .tile-caption-title { font-size: 13px; color: var(--fg); }
 .tile-caption-sub { font-size: 11px; color: var(--muted); }
 /* Casting viewer: who's in the photo, large, to its left and centred on it. */
+/* Laid over the left of the body, as wide as the gap up to the photo; the stage
+   keeps a 300px strip free so the photo never runs under it. */
+.viewer-body { position: relative; }
+.viewer-stage.with-talent { padding-left: 300px; }
 .viewer-talent {
-  flex: 0 0 300px; min-height: 0; overflow-y: auto;
-  display: flex; flex-direction: column; justify-content: center;
-  padding: 0 8px 16px 28px; color: var(--fg);
+  position: absolute; left: 0; top: 0; bottom: 0; z-index: 2;
+  width: var(--talent-gap, 300px); max-width: 100%;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0 20px 16px; overflow-y: auto; color: var(--fg);
   user-select: text; -webkit-user-select: text;
 }
+.viewer-talent-inner { max-height: 100%; }
 .viewer-talent-name { margin: 0 0 6px; font-size: 32px; font-weight: 500; line-height: 1.15; }
 .viewer-talent-sub { font-size: 15px; color: var(--muted); }
 .viewer-talent-facts { list-style: none; margin: 18px 0; padding: 0; font-size: 21px; line-height: 1.5; }
 @media (max-width: 760px) {
   /* A phone has no room beside the photo: the same details sit above it, smaller. */
-  .viewer-talent { flex: 0 0 auto; max-height: 34%; justify-content: flex-start; padding: 0 16px 10px; }
+  .viewer-stage.with-talent { padding-left: 16px; }
+  .viewer-talent {
+    position: static; width: auto; flex: 0 0 auto; max-height: 34%;
+    display: block; padding: 0 16px 10px;
+  }
   .viewer-talent-name { font-size: 22px; margin-bottom: 2px; }
   .viewer-talent-sub { font-size: 13px; }
   .viewer-talent-facts { margin: 6px 0; font-size: 15px; line-height: 1.45; }
