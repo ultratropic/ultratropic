@@ -713,17 +713,10 @@ export default function Viewer({
       // so a stray click beside the photo never loses your place.
     >
       <div className="viewer-head">
-        {talent ? (() => {
-          const t = talent(img);
-          return (
-            <span className="viewer-title">
-              <strong className="viewer-name">{t.name}</strong>
-              {t.of && <span className="viewer-info">{t.of}</span>}
-              {t.info && <span className="viewer-info">{t.info}</span>}
-              {albumName && <span className="viewer-info">{albumName}</span>}
-            </span>
-          );
-        })() : (
+        {talent ? (
+          // Casting: who this is goes beside the photo, large (below).
+          <span className="viewer-title" />
+        ) : (
           <span className="viewer-title mono">
             {albumName && <span style={{ marginRight: 10 }}>{albumName}</span>}
             {img.filename}
@@ -760,6 +753,22 @@ export default function Viewer({
       </div>
 
       <div className="viewer-body">
+        {talent && (() => {
+          const t = talent(img);
+          const facts = (t.info ?? '').split(' · ').map((f) => f.trim()).filter(Boolean);
+          return (
+            <aside className="viewer-talent" onClick={(e) => e.stopPropagation()}>
+              <h2 className="viewer-talent-name">{t.name}</h2>
+              {t.of && <div className="viewer-talent-sub">{t.of}</div>}
+              {facts.length > 0 && (
+                <ul className="viewer-talent-facts">
+                  {facts.map((f, i) => <li key={i}>{f}</li>)}
+                </ul>
+              )}
+              {albumName && <div className="viewer-talent-sub">{albumName}</div>}
+            </aside>
+          );
+        })()}
         <div
           ref={stageRef}
           className={`viewer-stage${zoomed ? ' zoomed' : ''}${notesOpen ? ' annotating' : ''}${drawing ? ' drawing' : ''}`}

@@ -261,8 +261,25 @@ button.ghost.danger:hover { border-color: #c0392b; }
 .tile-caption-title, .tile-caption-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tile-caption-title { font-size: 13px; color: var(--fg); }
 .tile-caption-sub { font-size: 11px; color: var(--muted); }
-.viewer-name { color: var(--fg); font-weight: 500; margin-right: 12px; }
-.viewer-info { font-size: 13px; margin-right: 12px; }
+/* Casting viewer: who's in the photo, large, to its left and centred on it. */
+.viewer-talent {
+  flex: 0 0 300px; min-height: 0; overflow-y: auto;
+  display: flex; flex-direction: column; justify-content: center;
+  padding: 0 8px 16px 28px; color: var(--fg);
+  user-select: text; -webkit-user-select: text;
+}
+.viewer-talent-name { margin: 0 0 6px; font-size: 32px; font-weight: 500; line-height: 1.15; }
+.viewer-talent-sub { font-size: 15px; color: var(--muted); }
+.viewer-talent-facts { list-style: none; margin: 18px 0; padding: 0; font-size: 21px; line-height: 1.5; }
+@media (max-width: 760px) {
+  /* A phone has no room beside the photo: the same details sit above it, smaller. */
+  .viewer-talent { flex: 0 0 auto; max-height: 34%; justify-content: flex-start; padding: 0 16px 10px; }
+  .viewer-talent-name { font-size: 22px; margin-bottom: 2px; }
+  .viewer-talent-sub { font-size: 13px; }
+  .viewer-talent-facts { margin: 6px 0; font-size: 15px; line-height: 1.45; }
+  .viewer-talent-facts li { display: inline; }
+  .viewer-talent-facts li + li::before { content: ' · '; color: var(--muted); }
+}
 .find { width: 100%; margin: 0 0 18px; }
 .brief { max-width: 720px; margin: 4px 0 22px; font-size: 13px; line-height: 1.55; color: var(--muted); white-space: pre-wrap; }
 .brief strong { color: var(--fg); font-weight: 500; }
