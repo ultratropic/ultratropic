@@ -4,9 +4,6 @@ import NotesPanel, { pinNumbers, COLORS, type Note, type NoteInput, type NotesAp
 import { anchorOf, geometry, HALO, HALO_COLOR, STROKE } from './marks';
 import { ApiError } from './api';
 
-/** Width the casting details keep free beside the photo (matches .viewer-stage.with-talent). */
-const TALENT_STRIP = 300;
-
 const SWIPE_DISTANCE = 60;   // px: a deliberate horizontal drag
 const SWIPE_VELOCITY = 0.45; // px/ms: or a quick flick
 const TAP_SLOP = 10;         // px of movement still counted as a tap
@@ -760,13 +757,9 @@ export default function Viewer({
           const t = talent(img);
           const facts = (t.info ?? '').split(' · ').map((f) => f.trim()).filter(Boolean);
           return (
-            // Spans the whole gap from the screen edge to the photo's left edge (the
-            // stage keeps a strip free for it), so the details sit centred in that gap.
-            <aside
-              className="viewer-talent"
-              style={{ '--talent-gap': `${TALENT_STRIP + Math.max(0, (stage.w - fw) / 2)}px` } as React.CSSProperties}
-              onClick={(e) => e.stopPropagation()}
-            >
+            // A fixed column the photo never enters; the details hold one place in
+            // it, so stepping through photos of different shapes never moves them.
+            <aside className="viewer-talent" onClick={(e) => e.stopPropagation()}>
               <div className="viewer-talent-inner">
                 <h2 className="viewer-talent-name">{t.name}</h2>
                 {t.of && <div className="viewer-talent-sub">{t.of}</div>}
