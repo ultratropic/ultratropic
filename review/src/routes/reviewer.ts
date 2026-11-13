@@ -1,7 +1,7 @@
 import { Hono, type Context } from 'hono';
-import { getCookie, setCookie } from 'hono/cookie';
+import { getCookie } from 'hono/cookie';
 import { ulid, normalizeEmail } from '../lib/ids';
-import { verifyPassword, sign, unsign } from '../lib/crypto';
+import { verifyPassword, unsign } from '../lib/crypto';
 import { listNotes, addNote, noteImage, resolveNote, deleteNote } from '../lib/notes';
 import {
   issueReviewerCookie,
@@ -70,8 +70,9 @@ export const byAlbumToken: Resolve = async (env, token) => {
   };
 };
 
+// Before guests, a password let you in for 30 minutes to type a name. No longer
+// issued; still honoured by /join and cleared there, for pages opened before.
 const UNLOCK_COOKIE = 'rv_unlock';
-const UNLOCK_TTL = 1000 * 60 * 30; // long enough to type a name, not a standing key
 
 const scopeOf = (t: Target) => (t.album ? `album:${t.album.id}` : `project:${t.project.id}`);
 
@@ -90,10 +91,15 @@ function passwordFor(t: Target): { hash: string; salt: string } | null {
   return null;
 }
 
-/** A session whose reviewer has been removed is no session: clear it. */
+/**
+ * A session whose reviewer has been removed is no session: clear it. A session
+ * with no reviewer (rid '') is a guest: someone who opened the link (and gave the
+ * password, if there is one) and may look, but hasn't said who they are yet.
+ */
 async function liveSession(c: Ctx, t: Target): Promise<ReviewerSession | null> {
   const s = await readReviewerFor(c, t.project.id);
   if (!s) return null;
+  if (s.rid === '') return s;
   const exists = await c.env.DB.prepare(`SELECT 1 FROM reviewers WHERE id = ? AND project_id = ?`)
     .bind(s.rid, t.project.id)
     .first();
@@ -133,11 +139,17 @@ export function reviewerRoutes(resolve: Resolve) {
     return t && t.project.status === 'active' ? t : null;
   }
 
-  async function requireAccess(c: Ctx): Promise<{ t: Target; s: ReviewerSession } | Response> {
+  /**
+   * Looking needs only access to the link. Changing anything (a heart, a note)
+   * needs a name: guests are refused with `name needed`, which the page answers
+   * by asking for one.
+   */
+  async function requireAccess(c: Ctx, need: 'look' | 'named' = 'look'): Promise<{ t: Target; s: ReviewerSession } | Response> {
     const t = await load(c);
     if (!t) return c.json({ error: 'not found' }, 404);
     const s = await liveSession(c, t);
     if (!s || !covers(s, t)) return c.json({ error: 'not joined' }, 401);
+    if (need === 'named' && !s.rid) return c.json({ error: 'name needed' }, 403);
     return { t, s };
   }
 
@@ -158,7 +170,7 @@ export function reviewerRoutes(resolve: Resolve) {
       album: t.album?.name ?? null,
       hasPassword: !!passwordFor(t),
       joined: !!s && covers(s, t),
-      known: !!s,
+      known: !!s?.rid,
       reviewerName,
     });
   });
@@ -179,21 +191,13 @@ export function reviewerRoutes(resolve: Resolve) {
       }
     }
 
-    // Someone already identified in this project (another album link, say) just
-    // gains this album — no second round of name and email.
+    // Opening the link is enough to look. Someone already in this project
+    // (named, or a guest from another album link) just gains this album; anyone
+    // else becomes a guest, asked for a name only when they heart, note or download.
     const s = await liveSession(c, t);
-    if (s) {
-      await issueReviewerCookie(c, extend(s, t));
-      return c.json({ ok: true, joined: true });
-    }
-
-    if (pw) {
-      const token = await sign({ scope: scopeOf(t), exp: Date.now() + UNLOCK_TTL }, c.env.COOKIE_SECRET);
-      setCookie(c, cookieName(c, UNLOCK_COOKIE), token, {
-        httpOnly: true, secure: true, sameSite: 'Lax', path: '/', maxAge: UNLOCK_TTL / 1000,
-      });
-    }
-    return c.json({ ok: true, joined: false });
+    const base = s ?? { rid: '', pid: t.project.id, all: false, albums: [] as string[] };
+    await issueReviewerCookie(c, extend(base, t));
+    return c.json({ ok: true, joined: true });
   });
 
   /**
@@ -210,7 +214,10 @@ export function reviewerRoutes(resolve: Resolve) {
       return c.json({ error: 'too many attempts' }, 429);
     }
 
-    if (passwordFor(t)) {
+    // Behind a password, only someone who already got in (a guest of this link,
+    // or a pre-guest unlock cookie) may name themselves.
+    const prior = await liveSession(c, t);
+    if (passwordFor(t) && !(prior && covers(prior, t))) {
       const unlock = await unsign<{ scope: string }>(getCookie(c, cookieName(c, UNLOCK_COOKIE)), c.env.COOKIE_SECRET);
       if (unlock?.scope !== scopeOf(t)) return c.json({ error: 'locked' }, 403);
     }
@@ -248,12 +255,11 @@ export function reviewerRoutes(resolve: Resolve) {
         .run();
     }
 
-    // Keep any access this device already had in the project — unless it belonged
-    // to someone else, in which case start clean.
-    const prior = await liveSession(c, t);
+    // Keep any access this device already had in the project (as this person, or
+    // as a guest) — unless it belonged to someone else, in which case start clean.
     const base =
-      prior && prior.rid === reviewerId
-        ? prior
+      prior && (prior.rid === reviewerId || prior.rid === '')
+        ? { ...prior, rid: reviewerId }
         : { rid: reviewerId, pid: t.project.id, all: false, albums: [] as string[] };
     await issueReviewerCookie(c, extend(base, t));
     dropCookie(c, UNLOCK_COOKIE);
@@ -273,9 +279,11 @@ export function reviewerRoutes(resolve: Resolve) {
     if (gate instanceof Response) return gate;
     const { t, s } = gate;
 
-    await c.env.DB.prepare(`UPDATE reviewers SET last_seen_at = ? WHERE id = ?`)
-      .bind(Date.now(), s.rid)
-      .run();
+    if (s.rid) {
+      await c.env.DB.prepare(`UPDATE reviewers SET last_seen_at = ? WHERE id = ?`)
+        .bind(Date.now(), s.rid)
+        .run();
+    }
 
     const payload = await buildGallery(c.env, {
       projectId: t.project.id,
@@ -300,7 +308,7 @@ export function reviewerRoutes(resolve: Resolve) {
   }
 
   r.put('/:key/selections/:imageId', async (c) => {
-    const gate = await requireAccess(c);
+    const gate = await requireAccess(c, 'named');
     if (gate instanceof Response) return gate;
     const imageId = c.req.param('imageId');
     if (!(await imageInScope(c, gate.t, imageId))) return c.json({ error: 'not found' }, 404);
@@ -317,7 +325,7 @@ export function reviewerRoutes(resolve: Resolve) {
   });
 
   r.delete('/:key/selections/:imageId', async (c) => {
-    const gate = await requireAccess(c);
+    const gate = await requireAccess(c, 'named');
     if (gate instanceof Response) return gate;
     const imageId = c.req.param('imageId');
     if (!(await imageInScope(c, gate.t, imageId))) return c.json({ error: 'not found' }, 404);
@@ -354,7 +362,7 @@ export function reviewerRoutes(resolve: Resolve) {
   });
 
   r.post('/:key/images/:imageId/notes', async (c) => {
-    const gate = await requireAccess(c);
+    const gate = await requireAccess(c, 'named');
     if (gate instanceof Response) return gate;
     const imageId = c.req.param('imageId');
     if (!(await imageInScope(c, gate.t, imageId))) return c.json({ error: 'not found' }, 404);
@@ -364,7 +372,7 @@ export function reviewerRoutes(resolve: Resolve) {
   });
 
   r.post('/:key/notes/:noteId/resolve', async (c) => {
-    const gate = await requireAccess(c);
+    const gate = await requireAccess(c, 'named');
     if (gate instanceof Response) return gate;
     const note = await visibleNote(c, gate.t, gate.s.rid, c.req.param('noteId'));
     if (!note) return c.json({ error: 'not found' }, 404);
@@ -376,7 +384,7 @@ export function reviewerRoutes(resolve: Resolve) {
 
   /** Reviewers can only remove their own notes. */
   r.delete('/:key/notes/:noteId', async (c) => {
-    const gate = await requireAccess(c);
+    const gate = await requireAccess(c, 'named');
     if (gate instanceof Response) return gate;
     const note = await visibleNote(c, gate.t, gate.s.rid, c.req.param('noteId'));
     if (!note) return c.json({ error: 'not found' }, 404);

@@ -11,6 +11,7 @@ import CopyLink from './CopyLink';
 import Logo from './Logo';
 import { useNoZoom } from './useNoZoom';
 import { downloadOne, downloadZip } from './download';
+import NameGate from './NameGate';
 import type { ProjectNote } from './retouchSheet';
 import { talentGroupName, talentLabel } from '../../shared/names';
 
@@ -335,19 +336,56 @@ export default function Gallery({
    * State is read from a ref updated in the same tick, never from inside a
    * setState updater, which runs later and would see yesterday's value.
    */
+  // ---- guests: anyone with the link can look; a name is asked for on the first
+  // heart, note or download, and whatever they were doing then goes through.
+  const named = admin || !!data?.me.id;
+  const namedRef = useRef(named);
+  namedRef.current = named;
+  const [nameAsk, setNameAsk] = useState<string | null>(null);
+  const afterName = useRef<{ run: () => void; cancel: () => void }[]>([]);
+  const needName = useCallback((why: string, run: () => void, cancel: () => void = () => {}) => {
+    if (namedRef.current) { run(); return; }
+    afterName.current.push({ run, cancel });
+    setNameAsk((w) => w ?? why);
+  }, []);
+  const whenNamed = useCallback((why: string) => new Promise<void>((resolve, reject) =>
+    needName(why, resolve, () => reject(new Error('Add your name to save it')))), [needName]);
+  // Runs once the gallery has reloaded as the named reviewer (their own earlier
+  // picks included), so a queued heart sees the real state.
+  useEffect(() => {
+    if (!named || afterName.current.length === 0) return;
+    const queued = afterName.current;
+    afterName.current = [];
+    queued.forEach((q) => q.run());
+  }, [named]);
+  const cancelName = useCallback(() => {
+    const queued = afterName.current;
+    afterName.current = [];
+    setNameAsk(null);
+    queued.forEach((q) => q.cancel());
+  }, []);
+
   /** Retouch notes for the viewer; the same paths work for the owner and reviewers. */
   const notesApi = useMemo<NotesApi>(() => {
     type R = { notes: Note[] };
+    const ensure = async () => { if (!namedRef.current) await whenNamed('to leave notes'); };
     return {
       list: (imageId) => api<R>(`${base}/images/${imageId}/notes`).then((r) => r.notes),
-      add: (imageId, input, opts) =>
-        api<R>(`${base}/images/${imageId}/notes`, { method: 'POST', body: JSON.stringify(input), keepalive: opts?.keepalive })
-          .then((r) => r.notes),
-      resolve: (noteId, resolved) =>
-        api<R>(`${base}/notes/${noteId}/resolve`, { method: 'POST', body: JSON.stringify({ resolved }) }).then((r) => r.notes),
-      remove: (noteId) => api<R>(`${base}/notes/${noteId}`, { method: 'DELETE' }).then((r) => r.notes),
+      add: async (imageId, input, opts) => {
+        await ensure();
+        return api<R>(`${base}/images/${imageId}/notes`, { method: 'POST', body: JSON.stringify(input), keepalive: opts?.keepalive })
+          .then((r) => r.notes);
+      },
+      resolve: async (noteId, resolved) => {
+        await ensure();
+        return api<R>(`${base}/notes/${noteId}/resolve`, { method: 'POST', body: JSON.stringify({ resolved }) }).then((r) => r.notes);
+      },
+      remove: async (noteId) => {
+        await ensure();
+        return api<R>(`${base}/notes/${noteId}`, { method: 'DELETE' }).then((r) => r.notes);
+      },
     };
-  }, [base]);
+  }, [base, whenNamed]);
 
   const onNotesChanged = useCallback((imageId: string, all: number, open: number) => {
     const patch = (img: GalleryImg) => (img.id === imageId ? { ...img, notes: all, notesOpen: open } : img);
@@ -357,7 +395,7 @@ export default function Gallery({
   }, []);
 
   const inflight = useRef(new Map<string, { chain: Promise<unknown>; seq: number }>());
-  const toggle = useCallback(
+  const toggleNow = useCallback(
     (id: string) => {
       const current = imagesRef.current.find((img) => img.id === id);
       if (!current || !data) return;
@@ -397,6 +435,17 @@ export default function Gallery({
     },
     [base, data, onRemoved],
   );
+  const toggleNowRef = useRef(toggleNow);
+  toggleNowRef.current = toggleNow;
+  /** A guest's first heart asks for their name, then lands (unless they'd already picked it before). */
+  const toggle = useCallback((id: string) => {
+    if (namedRef.current) { toggleNow(id); return; }
+    needName('to heart photos', () => {
+      const img = imagesRef.current.find((x) => x.id === id);
+      if (img && !img.mine) toggleNowRef.current(id);
+    });
+  }, [toggleNow, needName]);
+  const startZipRef = useRef<() => Promise<void>>(async () => {});
 
   const deleteImage = useCallback(async (id: string) => {
     await api(`/api/admin/images/${id}`, { method: 'DELETE' });
@@ -751,13 +800,16 @@ export default function Gallery({
     }
   };
 
-  const downloadFrame = (img: { filename: string; preview: string }) => {
+  startZipRef.current = startZip;
+  const startZipNamed = () => needName('to download photos', () => void startZipRef.current());
+
+  const downloadFrame = (img: { filename: string; preview: string }) => needName('to download photos', () => {
     downloadOne(img).catch((err) =>
       setDl({ done: 0, total: 1, label: img.filename, error: (err as Error).message }));
-  };
+  });
 
   const downloadButton = canDownload && mode === 'browse' && visible.length > 0 ? (
-          <button className="ghost download-btn closes-menu" onClick={() => void startZip()}
+          <button className="ghost download-btn closes-menu" onClick={startZipNamed}
             disabled={!!dl && !dl.error && dl.done < dl.total}>
             <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
               <path d="M8 2v8M4.5 6.5 8 10l3.5-3.5M3 13.5h10" fill="none" stroke="currentColor"
@@ -1129,13 +1181,22 @@ export default function Gallery({
         ) : (
           <div className="side-foot">
             {downloadButton}
-            <p className="meta" style={{ margin: 0 }}>
-              Reviewing as {data.me.name} ·{' '}
-              <button className="text-btn" onClick={async () => {
-                await api(`${base}/leave`, { method: 'POST' });
-                location.reload();
-              }}>not you?</button>
-            </p>
+            {data.me.id ? (
+              <p className="meta" style={{ margin: 0 }}>
+                Reviewing as {data.me.name} ·{' '}
+                <button className="text-btn" onClick={async () => {
+                  await api(`${base}/leave`, { method: 'POST' });
+                  location.reload();
+                }}>not you?</button>
+              </p>
+            ) : (
+              <p className="meta" style={{ margin: 0 }}>
+                Viewing as a guest ·{' '}
+                <button className="text-btn" onClick={() => needName('so your hearts and notes are yours', () => {})}>
+                  add your name
+                </button>
+              </p>
+            )}
           </div>
         )}
       </aside>
@@ -1380,6 +1441,14 @@ export default function Gallery({
               .sort((a, b) => Number(b.isMe) - Number(a.isMe))
               .map((r) => (r.isMe ? 'You' : r.name));
           })()}
+        />
+      )}
+      {nameAsk && (
+        <NameGate
+          base={base}
+          why={nameAsk}
+          onDone={async () => { await loadGallery(); setNameAsk(null); }}
+          onCancel={cancelName}
         />
       )}
     </div>

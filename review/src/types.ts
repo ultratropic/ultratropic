@@ -39,7 +39,7 @@ export interface OwnerSession {
  * browser doesn't sign you out of the first.
  */
 export interface ReviewerSession {
-  rid: string; // reviewer id
+  rid: string; // reviewer id; '' = a guest, who may look but hasn't given a name yet
   pid: string; // project id
   /** Joined through the project link: every album is visible. */
   all: boolean;

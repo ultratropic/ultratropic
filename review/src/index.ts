@@ -96,7 +96,8 @@ app.get('/i/:key', async (c) => {
     if (!session || !canSeeAlbum(session, frame.album_id)) return c.text('not found', 404);
     // A removed reviewer's cookie is still validly signed: check they still exist,
     // or they could keep loading photos whose addresses they'd already seen.
-    const live = await c.env.DB.prepare(`SELECT 1 FROM reviewers WHERE id = ? AND project_id = ?`)
+    // A guest (rid '') has no row to check: the link itself is their access.
+    const live = session.rid === '' || await c.env.DB.prepare(`SELECT 1 FROM reviewers WHERE id = ? AND project_id = ?`)
       .bind(session.rid, frame.project_id)
       .first();
     if (!live) return c.text('not found', 404);
