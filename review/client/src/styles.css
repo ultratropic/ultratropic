@@ -261,6 +261,7 @@ button.ghost.danger:hover { border-color: #c0392b; }
 .tile-caption-title, .tile-caption-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tile-caption-title { font-size: 13px; color: var(--fg); }
 .tile-caption-sub { font-size: 11px; color: var(--muted); }
+.tile-caption-tag { color: var(--muted); }
 /* Casting viewer: who's in the photo, large, to its left and centred on it. */
 /* A fixed column on the left that the photo is fitted beside. The details sit at
    one spot in it (a fixed-width block, centred across the column, its top a set

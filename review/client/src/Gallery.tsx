@@ -92,6 +92,9 @@ const AGREED_WORDS = 'Selected by 2 or more people';
 const EVERYONE_WORDS =
   `Selected by everyone — counting only people who've selected at least ${ACTIVE_SHARE * 100}% of the photos`;
 
+/** A board's agency for a casting caption: "Wilhelmina — Men" reads as "Wilhelmina". */
+const agencyLabel = (albumName: string | undefined) => albumName?.split(/\s+[—–-]\s+/)[0]?.trim() || albumName || null;
+
 /** Who's in a casting photo: the name given, or one made from the filename. */
 const talentName = (img: { name?: string | null; filename: string }) => talentLabel(img.name, img.filename);
 
@@ -145,6 +148,8 @@ export default function Gallery({
     return () => window.removeEventListener('popstate', onPop);
   }, []);
   const [activeAlbum, setActiveAlbum] = useState(0);
+  /** Casting: one grid of everyone; picking an agency in the sidebar narrows it to that board. */
+  const [agency, setAgency] = useState<number | null>(null);
   useNoZoom();
   const [initialView] = useState(viewFromUrl);
   const [arrival] = useState(() => {
@@ -287,6 +292,7 @@ export default function Gallery({
     const i = data.albums.findIndex((a) => a.slug === arrival.album);
     if (i < 0) return;
     restored.current = true;
+    if (data.project.kind === 'casting') { setAgency(i); return; }
     let tries = 0;
     const land = () => {
       const el = sectionRefs.current[i];
@@ -522,11 +528,16 @@ export default function Gallery({
   }, [images, filter, selectedBy, everyone, unitPicks]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Casting: the name search narrows whatever filter is on.
+  // A casting is one grid of everyone, A to Z (the agency shows by each name),
+  // optionally narrowed to one agency's board from the sidebar.
   const visible = useMemo(() => {
+    if (!casting) return byFilter;
     const q = query.trim().toLowerCase();
-    if (!casting || !q) return byFilter;
-    return byFilter.filter((i) => talentName(i).toLowerCase().includes(q));
-  }, [byFilter, casting, query]);
+    let list = agency === null ? byFilter : byFilter.filter((i) => i.album === agency);
+    if (q) list = list.filter((i) => talentName(i).toLowerCase().includes(q));
+    const name = (i: GalleryImg) => talentGroupName(i.name, i.filename) ?? talentName(i);
+    return [...list].sort((a, b) => name(a).localeCompare(name(b), undefined, { sensitivity: 'base' }) || a.album - b.album);
+  }, [byFilter, casting, query, agency]);
 
   /**
    * What full screen steps through. A shoot: the photos on screen. A casting:
@@ -867,6 +878,39 @@ export default function Gallery({
                 : 'All photos';
   const viewCount = mode === 'browse' ? countUnits(visible) : null;
 
+  /** Copy link, private link and delete for one album (an album's header, or the agency picked in a casting). */
+  const albumActions = (album: GalleryData['albums'][number], i: number) => (
+    <>
+      {shareBase && (
+        <button
+          className="text-btn"
+          title="The full project, opened at this album"
+          onClick={async () => {
+            await navigator.clipboard.writeText(`${shareBase}?album=${album.slug}&shared=1`).catch(() => {});
+            setCopiedAlbum(album.id);
+            setTimeout(() => setCopiedAlbum((c) => (c === album.id ? null : c)), 1500);
+          }}
+        >
+          {copiedAlbum === album.id ? 'Copied' : 'Copy link'}
+        </button>
+      )}
+      <button
+        className="text-btn"
+        title="A link to this album only, optionally with its own password"
+        onClick={() => setSharing(sharing === album.id ? null : album.id)}
+      >
+        Private link
+      </button>
+      <button className="text-btn danger" onClick={async () => {
+        const n = images.filter((x) => x.album === i).length;
+        if (!window.confirm(`Delete album "${album.name}" and its ${n} images, with their selects and notes? This cannot be undone.`)) return;
+        await api(`/api/admin/albums/${album.id}`, { method: 'DELETE' });
+        setAgency(null);
+        void loadGallery();
+      }}>Delete</button>
+    </>
+  );
+
   const albumTitle = data.albums.length === 1 && !admin && !data.project.slug ? data.albums[0]!.name : null;
 
   return (
@@ -1060,9 +1104,13 @@ export default function Gallery({
             return (
               <button
                 key={a.id}
-                className={`side-link${activeAlbum === i && mode === 'browse' ? ' active' : ''}`}
+                className={`side-link${(casting ? agency === i : activeAlbum === i) && mode === 'browse' ? ' active' : ''}`}
+                aria-pressed={casting ? agency === i : undefined}
                 onClick={() => {
                   setMode('browse');
+                  // A casting has no sections to scroll to: the agency narrows the grid
+                  // (and again shows everyone).
+                  if (casting) { setAgency((cur) => (cur === i ? null : i)); window.scrollTo({ top: 0 }); return; }
                   // After this render: the section exists again, and on a phone the
                   // menu has closed and released its scroll lock.
                   setTimeout(() =>
@@ -1307,7 +1355,56 @@ export default function Gallery({
                 : 'Nothing selected yet.'}
           </p>
         )}
-        {mode === 'browse' && data.albums.map((album, i) => {
+        {mode === 'browse' && casting && (() => {
+          const list = tilesFor(visible);
+          const album = agency === null ? null : data.albums[agency];
+          const picked = list.filter((x) => x.mine).length;
+          return (
+            <section>
+              <header className="section-head">
+                <h3>{album ? album.name : 'Everyone'}</h3>
+                <span className="meta">
+                  {list.length} {list.length === 1 ? 'person' : 'people'}
+                  {picked > 0 && ` · ${picked} selected`}
+                </span>
+                {album ? (
+                  <span className="section-actions">
+                    <button className="text-btn" onClick={() => setAgency(null)}>Show everyone</button>
+                    {admin && agency !== null && albumActions(album, agency)}
+                  </span>
+                ) : null}
+              </header>
+              {admin && album && sharing === album.id && (
+                <SharePanel
+                  albumId={album.id}
+                  state={album}
+                  projectHasPassword={!!data.project.hasPassword}
+                  onSaved={(st) => setData((d) => d && {
+                    ...d,
+                    albums: d.albums.map((a) => (a.id === album.id ? { ...a, ...st } : a)),
+                  })}
+                />
+              )}
+              <Grid
+                images={list}
+                onOpen={(localIndex) => {
+                  const img = list[localIndex];
+                  const i = img ? indexOf.get(img.id) : undefined;
+                  if (i !== undefined) openViewer(i);
+                }}
+                onToggle={toggleTile}
+                onDownload={canDownload ? downloadFrame : undefined}
+                showNames={false}
+                caption={(img) => ({
+                  title: talentName(img),
+                  tag: agency === null ? agencyLabel(data.albums[(img as GalleryImg).album]?.name) : null,
+                  sub: img.info,
+                })}
+              />
+            </section>
+          );
+        })()}
+        {mode === 'browse' && !casting && data.albums.map((album, i) => {
           const photos = byAlbum.get(i) ?? [];
           if (photos.length === 0 && (filter.kind !== 'all' || (casting && query.trim()))) return null;
           const list = tilesFor(photos);
@@ -1322,32 +1419,7 @@ export default function Gallery({
                 </span>
                 {admin && (
                   <span className="section-actions">
-                    {shareBase && (
-                      <button
-                        className="text-btn"
-                        title="The full project, opened at this album"
-                        onClick={async () => {
-                          await navigator.clipboard.writeText(`${shareBase}?album=${album.slug}&shared=1`).catch(() => {});
-                          setCopiedAlbum(album.id);
-                          setTimeout(() => setCopiedAlbum((c) => (c === album.id ? null : c)), 1500);
-                        }}
-                      >
-                        {copiedAlbum === album.id ? 'Copied' : 'Copy link'}
-                      </button>
-                    )}
-                    <button
-                      className="text-btn"
-                      title="A link to this album only, optionally with its own password"
-                      onClick={() => setSharing(sharing === album.id ? null : album.id)}
-                    >
-                      Private link
-                    </button>
-                    <button className="text-btn danger" onClick={async () => {
-                      const n = images.filter((x) => x.album === i).length;
-                      if (!window.confirm(`Delete album "${album.name}" and its ${n} images, with their selects and notes? This cannot be undone.`)) return;
-                      await api(`/api/admin/albums/${album.id}`, { method: 'DELETE' });
-                      void loadGallery();
-                    }}>Delete</button>
+                    {albumActions(album, i)}
                   </span>
                 )}
               </header>

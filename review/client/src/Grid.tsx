@@ -125,7 +125,7 @@ export default function Grid({
   /** Filenames on the tiles — what tells two near-identical frames apart. */
   showNames?: boolean;
   /** A line or two under each photo (casting: name and status). */
-  caption?: (img: Img) => { title: string; sub?: string | null };
+  caption?: (img: Img) => { title: string; tag?: string | null; sub?: string | null };
 }) {
   const captionHeight = caption ? CAPTION_HEIGHT : 0;
   const ref = useRef<HTMLDivElement>(null);
@@ -264,8 +264,8 @@ export default function Grid({
             {caption && (() => {
               const c = caption(img);
               return (
-                <div className="tile-caption" style={{ height: CAPTION_HEIGHT }} title={c.sub ? `${c.title} · ${c.sub}` : c.title}>
-                  <span className="tile-caption-title">{c.title}</span>
+                <div className="tile-caption" style={{ height: CAPTION_HEIGHT }} title={[c.title, c.tag, c.sub].filter(Boolean).join(' · ')}>
+                  <span className="tile-caption-title">{c.title}{c.tag && <span className="tile-caption-tag"> · {c.tag}</span>}</span>
                   {c.sub && <span className="tile-caption-sub">{c.sub}</span>}
                 </div>
               );
