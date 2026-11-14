@@ -20,7 +20,22 @@ export interface GalleryImg extends Img {
   selects: number;
   mine: boolean;
   dup: boolean;
+  /** Casting: 'men', 'women' or 'kids' when set for the person. */
+  group?: TalentGroup | null;
 }
+
+type TalentGroup = 'men' | 'women' | 'kids';
+const GROUPS: Array<{ key: TalentGroup; label: string }> = [
+  { key: 'men', label: 'Men' }, { key: 'women', label: 'Women' }, { key: 'kids', label: 'Kids' },
+];
+/** A board's name says who's on it often enough ("Wilhelmina — Men", "Signature Kids"). */
+const groupFromBoard = (albumName: string | undefined): TalentGroup | null => {
+  const n = (albumName ?? '').toLowerCase();
+  if (/\b(kids?|girls?|boys?|children|youth|teens?)\b/.test(n)) return 'kids';
+  if (/\b(women|woman|female|ladies)\b/.test(n)) return 'women';
+  if (/\b(men|man|male)\b/.test(n)) return 'men';
+  return null;
+};
 
 interface Album extends ShareState { id: string; name: string; slug: string }
 interface Reviewer { id: string; name: string; isMe: boolean; count: number; lastSeen?: number; hidden?: boolean }
@@ -150,6 +165,8 @@ export default function Gallery({
   const [activeAlbum, setActiveAlbum] = useState(0);
   /** Casting: one grid of everyone; picking an agency in the sidebar narrows it to that board. */
   const [agency, setAgency] = useState<number | null>(null);
+  /** Casting: Men / Women / Kids, on top of whichever filter is on. */
+  const [who, setWho] = useState<'all' | TalentGroup>('all');
   useNoZoom();
   const [initialView] = useState(viewFromUrl);
   const [arrival] = useState(() => {
@@ -224,6 +241,7 @@ export default function Gallery({
         info: (r[12] as string | null) ?? null,
         notes: (r[13] as number) ?? 0,
         notesOpen: (r[14] as number) ?? 0,
+        group: (r[15] as TalentGroup | null) ?? null,
       })),
     );
     setSelectedBy(d.selectionsByReviewer ?? {});
@@ -484,6 +502,19 @@ export default function Gallery({
     return m;
   }, [casting, images]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /** Each person's group: one set on them, else what their board's name says. */
+  const groupByPerson = useMemo(() => {
+    const m = new Map<string, TalentGroup | null>();
+    if (!peopleByKey || !data) return m;
+    for (const [k, members] of peopleByKey) {
+      m.set(k, members.find((x) => x.group)?.group
+        ?? members.map((x) => groupFromBoard(data.albums[x.album]?.name)).find(Boolean) ?? null);
+    }
+    return m;
+  }, [peopleByKey, data]); // eslint-disable-line react-hooks/exhaustive-deps
+  const groupOf = (img: GalleryImg) => groupByPerson.get(personKey(img)) ?? null;
+  const inWho = (img: GalleryImg) => who === 'all' || !casting || groupOf(img) === who;
+
   /**
    * What a select is a vote for: a photo in a shoot, a model in a casting (any
    * of their photos). Filters and counts work in these units, so the grid,
@@ -537,10 +568,11 @@ export default function Gallery({
     if (!casting) return byFilter;
     const q = query.trim().toLowerCase();
     let list = agency === null ? byFilter : byFilter.filter((i) => i.album === agency);
+    if (who !== 'all') list = list.filter(inWho);
     if (q) list = list.filter((i) => talentName(i).toLowerCase().includes(q));
     const name = (i: GalleryImg) => talentGroupName(i.name, i.filename) ?? talentName(i);
     return [...list].sort((a, b) => name(a).localeCompare(name(b), undefined, { sensitivity: 'base' }) || a.album - b.album);
-  }, [byFilter, casting, query, agency]);
+  }, [byFilter, casting, query, agency, who, groupByPerson]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * What full screen steps through. A shoot: the photos on screen. A casting:
@@ -711,11 +743,15 @@ export default function Gallery({
   const picksOf = (rid: string) => (casting ? unitPicks.perReviewer[rid]?.length : selectedBy[rid]?.length) ?? 0;
   const reviewers = data.reviewers.map((r) => ({ ...r, count: picksOf(r.id) }));
   const people = reviewers.filter((r) => r.count > 0);
-  const mineCount = countUnits(images.filter((i) => i.mine));
-  const anyCount = countUnits(images.filter((i) => pickerCount(i) > 0));
-  const agreedCount = countUnits(images.filter((i) => pickerCount(i) >= 2));
-  const everyoneCount = everyone.ids.size;
-  const notesCount = countUnits(images.filter((i) => (i.notes ?? 0) > 0));
+  // The counts follow Men / Women / Kids, so "My selects 12" is what shows.
+  const mineCount = countUnits(images.filter((i) => i.mine && inWho(i)));
+  const anyCount = countUnits(images.filter((i) => pickerCount(i) > 0 && inWho(i)));
+  const agreedCount = countUnits(images.filter((i) => pickerCount(i) >= 2 && inWho(i)));
+  const everyoneCount = who === 'all' || !casting ? everyone.ids.size
+    : [...everyone.ids].filter((u) => groupByPerson.get(u) === who).length;
+  const notesCount = countUnits(images.filter((i) => (i.notes ?? 0) > 0 && inWho(i)));
+  const whoCount = (g: TalentGroup) => [...groupByPerson.values()].filter((x) => x === g).length;
+  const allTalentCount = who === 'all' || !casting ? unitCount : whoCount(who);
   const dupCount = images.filter((i) => i.dup).length;
 
   // Export follows the current filter: filtered to Alice, you export Alice's.
@@ -772,17 +808,26 @@ export default function Gallery({
     if (link === null) return;
     const info = window.prompt('Status, e.g. "1st option · Nov 17–18" (leave empty for none):', img.info ?? '');
     if (info === null) return;
+    const current = groupOf(img as GalleryImg);
+    const groupIn = window.prompt('Men, women or kids? (leave empty to go by the board name)', current ?? '');
+    if (groupIn === null) return;
+    const g = groupIn.trim().toLowerCase().replace(/^(man|male)$/, 'men').replace(/^(woman|female)$/, 'women').replace(/^(kid|child|children)$/, 'kids');
+    if (g && g !== 'men' && g !== 'women' && g !== 'kids') { window.alert('Type men, women or kids, or leave it empty.'); return; }
+    const group = (g || null) as TalentGroup | null;
     try {
       await api(`/api/admin/images/${img.id}/details`, {
-        method: 'POST', body: JSON.stringify({ name, link, info }),
+        method: 'POST', body: JSON.stringify({ name, link, info, group }),
       });
     } catch (err) {
       window.alert((err as Error).message);
       return;
     }
     const patch = { name: name.trim() || null, link: link.trim() || null, info: info.trim() || null };
-    imagesRef.current = imagesRef.current.map((x) => (x.id === img.id ? { ...x, ...patch } : x));
-    setImages((list) => list.map((x) => (x.id === img.id ? { ...x, ...patch } : x)));
+    // The group is the person's: every photo with the same name gets it.
+    const sameName = (x: GalleryImg) => x.id === img.id || (!!patch.name && talentGroupName(x.name, x.filename) === patch.name.toLowerCase());
+    const apply = (list: GalleryImg[]) => list.map((x) => (x.id === img.id ? { ...x, ...patch, group } : sameName(x) ? { ...x, group } : x));
+    imagesRef.current = apply(imagesRef.current);
+    setImages(apply);
   };
 
   /** Owner: the retouch sheet for the photos with notes in the current view. */
@@ -975,10 +1020,24 @@ export default function Gallery({
             onChange={(e) => { setQuery(e.target.value); setMode('browse'); }}
           />
         )}
+        {casting && GROUPS.some((g) => whoCount(g.key) > 0) && (
+          <div className="who-row" role="group" aria-label="Men, women or kids">
+            {([{ key: 'all' as const, label: 'All' }, ...GROUPS.filter((g) => whoCount(g.key) > 0)]).map((g) => (
+              <button
+                key={g.key}
+                className={`who-pill closes-menu${who === g.key ? ' on' : ''}`}
+                aria-pressed={who === g.key}
+                onClick={() => { setWho(g.key); setMode('browse'); }}
+              >
+                {g.label}
+              </button>
+            ))}
+          </div>
+        )}
         <label>Show</label>
         <nav style={{ marginBottom: 20 }}>
           {([
-            { key: 'all', label: casting ? 'All talent' : 'All photos', n: unitCount },
+            { key: 'all', label: casting ? 'All talent' : 'All photos', n: allTalentCount },
             { key: 'mine', label: 'My selects', n: mineCount },
             { key: 'any', label: 'All selects', n: anyCount },
             { key: 'agreed', label: AGREED, n: agreedCount, title: AGREED_WORDS },
@@ -1366,7 +1425,7 @@ export default function Gallery({
           return (
             <section>
               <header className="section-head">
-                <h3>{album ? album.name : 'Everyone'}</h3>
+                <h3>{album ? album.name : who === 'all' ? 'Everyone' : GROUPS.find((g) => g.key === who)!.label}</h3>
                 <span className="meta">
                   {list.length} {list.length === 1 ? 'person' : 'people'}
                   {picked > 0 && ` · ${picked} selected`}

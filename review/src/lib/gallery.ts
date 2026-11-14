@@ -40,7 +40,7 @@ export async function buildGallery(env: Env, o: Options) {
       .all<{ id: string; name: string; slug: string; share_token: string | null; has_password: number }>(),
     env.DB.prepare(
       `SELECT i.id, i.original_filename, i.thumb_key, i.preview_key, i.width, i.height,
-              i.album_id, i.checksum, i.talent_name, i.link, i.info
+              i.album_id, i.checksum, i.talent_name, i.link, i.info, i.talent_group
          FROM images i JOIN albums a ON a.id = i.album_id
         WHERE i.project_id = ?
         ORDER BY a.seq, i.seq`,
@@ -49,7 +49,7 @@ export async function buildGallery(env: Env, o: Options) {
       .all<{
         id: string; original_filename: string; thumb_key: string; preview_key: string;
         width: number; height: number; album_id: string; checksum: string | null;
-        talent_name: string | null; link: string | null; info: string | null;
+        talent_name: string | null; link: string | null; info: string | null; talent_group: string | null;
       }>(),
     env.DB.prepare(`SELECT reviewer_id, image_id FROM selections WHERE project_id = ?`)
       .bind(o.projectId)
@@ -148,7 +148,7 @@ export async function buildGallery(env: Env, o: Options) {
       }))
       .filter((r) => r.isMe || r.count > 0 || o.admin),
     selectionsByReviewer,
-    fields: ['id', 'filename', 'thumb', 'preview', 'w', 'h', 'album', 'selects', 'mine', 'dup', 'name', 'link', 'info', 'notes', 'notesOpen'],
+    fields: ['id', 'filename', 'thumb', 'preview', 'w', 'h', 'album', 'selects', 'mine', 'dup', 'name', 'link', 'info', 'notes', 'notesOpen', 'group'],
     rows: images.map((i) => [
       i.id,
       i.original_filename,
@@ -165,6 +165,7 @@ export async function buildGallery(env: Env, o: Options) {
       i.info,
       noteCount.get(i.id) ?? 0,
       openNotes.get(i.id) ?? 0,
+      i.talent_group,
     ]),
   };
 }

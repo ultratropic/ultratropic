@@ -302,7 +302,7 @@ admin.post('/reviewers/:id/hidden', async (c) => {
  * status line (option, hold, availability). Empty strings clear a field.
  */
 admin.post('/images/:id/details', async (c) => {
-  type Body = { name?: string; link?: string; info?: string };
+  type Body = { name?: string; link?: string; info?: string; group?: string | null };
   const body = await c.req.json<Body>().catch(() => ({}) as Body);
   const clean = (v: unknown, max: number) =>
     v === undefined ? undefined : typeof v === 'string' ? v.trim().slice(0, max) || null : false;
@@ -323,6 +323,22 @@ admin.post('/images/:id/details', async (c) => {
       info !== undefined ? 1 : 0, info ?? null, c.req.param('id'))
     .run();
   if (!res.meta.changes) return c.json({ error: 'image not found' }, 404);
+
+  // Men / Women / Kids belongs to the person, so it goes on every photo of them
+  // in the project (same name, any board), or just this photo if it has no name.
+  if (body.group !== undefined) {
+    const group = body.group === null || body.group === '' ? null : body.group;
+    if (group !== null && group !== 'men' && group !== 'women' && group !== 'kids') {
+      return c.json({ error: "group: 'men', 'women', 'kids' or null" }, 400);
+    }
+    await c.env.DB.prepare(
+      `UPDATE images SET talent_group = ?1
+        WHERE id = ?2
+           OR (project_id = (SELECT project_id FROM images WHERE id = ?2)
+               AND talent_name IS NOT NULL
+               AND lower(trim(talent_name)) = (SELECT lower(trim(talent_name)) FROM images WHERE id = ?2))`,
+    ).bind(group, c.req.param('id')).run();
+  }
   return c.json({ ok: true });
 });
 
