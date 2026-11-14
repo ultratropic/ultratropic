@@ -87,13 +87,16 @@ exp.get('/projects/:pid/export', async (c) => {
 
   /**
    * What a select is a vote for: a photo in a shoot, a model in a casting (any
-   * of their photos in that album) — the same units the gallery's filters use,
+   * of their photos, on any board) — the same units the gallery's filters use,
    * so "2+" and "Everyone" export exactly what they show.
    */
   const unitOf = (img: (typeof images.results)[number]) => {
     const name = casting ? talentGroupName(img.talent_name, img.original_filename) : null;
-    return name ? `${img.album_id}:${name}` : img.id;
+    return name ? `name:${name}` : img.id;
   };
+  /** Every board a casting's person is on, in board order. */
+  const boardsOf = (photos: Array<{ album_id: string }>) =>
+    [...new Set(photos.map((p) => albumName.get(p.album_id) ?? ''))].filter(Boolean).join(', ');
   const unitById = new Map(images.results.map((img) => [img.id, unitOf(img)]));
 
   const pickers = new Map<string, string[]>();
@@ -137,7 +140,7 @@ exp.get('/projects/:pid/export', async (c) => {
   if (casting) for (const img of chosen) (people.get(unitById.get(img.id)!) ?? people.set(unitById.get(img.id)!, []).get(unitById.get(img.id)!)!).push(img);
 
   if (casting && format === 'txt') {
-    const rows = [...people.values()].map(([img]) => `${talent(img!)} — ${albumName.get(img!.album_id) ?? ''}`);
+    const rows = [...people.values()].map((photos) => `${talent(photos[0]!)} — ${boardsOf(photos)}`);
     body = rows.join('\n') + (rows.length ? '\n' : '');
   } else if (casting) {
     const lines = ['name,agency,portfolio,status,select_count,selected_by,photos,filenames,notes'];
@@ -147,7 +150,7 @@ exp.get('/projects/:pid/export', async (c) => {
       const notes = photos.map((p) => notesLine(notesBy.get(p.id) ?? [])).filter(Boolean).join(' | ');
       lines.push([
         csvField(safeName(talent(img))),
-        csvField(safeName(albumName.get(img.album_id) ?? '')),
+        csvField(safeName(boardsOf(photos))),
         csvField(img.link ?? ''),
         csvField(safeName(img.info ?? '')),
         String(names.length),

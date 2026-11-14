@@ -465,10 +465,13 @@ export default function Gallery({
   const casting = data?.project.kind === 'casting';
 
   // ---- casting: one tile per model ----
-  /** Which model a photo is of, within its album (the same name on two boards stays two tiles). */
+  /**
+   * Which model a photo is of. By name across the whole casting: someone on two
+   * boards (an agency's and "Client requests", say) is one person, one tile.
+   */
   const personKey = (img: GalleryImg) => {
     const name = talentGroupName(img.name, img.filename);
-    return name ? `${img.album}:${name}` : `photo:${img.id}`;
+    return name ? `name:${name}` : `photo:${img.id}`;
   };
   /** Every photo of each model, whatever the filter: opening a model shows them all. */
   const peopleByKey = useMemo(() => {
@@ -592,7 +595,8 @@ export default function Gallery({
     for (const img of images) {
       const t = m.get(img.album) ?? { n: 0, mine: 0 };
       if (casting) {
-        const k = personKey(img);
+        // Per board: someone on two boards counts on each.
+        const k = `${img.album}:${personKey(img)}`;
         const had = seen.get(k);
         if (had === undefined) { t.n++; if (img.mine) t.mine++; }
         else if (!had && img.mine) t.mine++;
@@ -1397,7 +1401,11 @@ export default function Gallery({
                 showNames={false}
                 caption={(img) => ({
                   title: talentName(img),
-                  tag: agency === null ? agencyLabel(data.albums[(img as GalleryImg).album]?.name) : null,
+                  // Every board they're on, e.g. "Client requests, LA Models".
+                  tag: agency === null
+                    ? [...new Set((peopleByKey?.get(personKey(img as GalleryImg)) ?? [img as GalleryImg])
+                      .map((m) => agencyLabel(data.albums[m.album]?.name)))].filter(Boolean).join(', ')
+                    : null,
                   sub: img.info,
                 })}
               />
