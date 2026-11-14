@@ -1020,20 +1020,6 @@ export default function Gallery({
             onChange={(e) => { setQuery(e.target.value); setMode('browse'); }}
           />
         )}
-        {casting && GROUPS.some((g) => whoCount(g.key) > 0) && (
-          <div className="who-row" role="group" aria-label="Men, women or kids">
-            {([{ key: 'all' as const, label: 'All' }, ...GROUPS.filter((g) => whoCount(g.key) > 0)]).map((g) => (
-              <button
-                key={g.key}
-                className={`who-pill closes-menu${who === g.key ? ' on' : ''}`}
-                aria-pressed={who === g.key}
-                onClick={() => { setWho(g.key); setMode('browse'); }}
-              >
-                {g.label}
-              </button>
-            ))}
-          </div>
-        )}
         <label>Show</label>
         <nav style={{ marginBottom: 20 }}>
           {([
@@ -1424,6 +1410,21 @@ export default function Gallery({
           const picked = list.filter((x) => x.mine).length;
           return (
             <section>
+              {GROUPS.some((g) => whoCount(g.key) > 0) && (
+                <div className="who-row" role="group" aria-label="Men, women or kids">
+                  {([{ key: 'all' as const, label: 'All' }, ...GROUPS.filter((g) => whoCount(g.key) > 0)]).map((g) => (
+                    <button
+                      key={g.key}
+                      className={`who-pill${who === g.key ? ' on' : ''}`}
+                      aria-pressed={who === g.key}
+                      onClick={() => setWho(g.key)}
+                    >
+                      {g.label}
+                      {g.key !== 'all' && <span className="who-n">{whoCount(g.key)}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
               <header className="section-head">
                 <h3>{album ? album.name : who === 'all' ? 'Everyone' : GROUPS.find((g) => g.key === who)!.label}</h3>
                 <span className="meta">
