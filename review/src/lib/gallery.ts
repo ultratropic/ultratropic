@@ -82,8 +82,10 @@ export async function buildGallery(env: Env, o: Options) {
 
   // A hidden reviewer is invisible to everyone but the owner and themselves —
   // their picks don't appear in filters, in heart counts, or anywhere else.
+  // On a curated link, everyone's picks but your own stay out of sight: the client
+  // starts from a clean page, and their picks are followed in the app.
   const hiddenFromMe = new Set(
-    o.admin ? [] : reviewersRes.results.filter((r) => r.hidden && r.id !== o.reviewerId).map((r) => r.id),
+    o.admin ? [] : reviewersRes.results.filter((r) => (r.hidden || curated) && r.id !== o.reviewerId).map((r) => r.id),
   );
 
   // Only selections on frames this caller can see count toward anything they see.

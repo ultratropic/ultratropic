@@ -1049,7 +1049,6 @@ export default function Gallery({
             {curated.title && <p className="meta">{curated.title}</p>}
           </div>
           <div className="curated-who">
-            {downloadButton}
             {whoLine}
           </div>
         </header>
@@ -1554,6 +1553,7 @@ export default function Gallery({
             </section>
           );
         })}
+        {curated && downloadButton && <div className="curated-foot">{downloadButton}</div>}
         {mode === 'browse' && casting && !curated && (() => {
           const list = tilesFor(visible);
           const boards = agencyAlbums === null ? [] : [...agencyAlbums];

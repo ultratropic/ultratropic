@@ -632,6 +632,8 @@ button.small { padding: 5px 12px; font-size: 13px; }
 .gallery.curated .section-head h3 { font-size: 30px; font-weight: 400; }
 .gallery.curated .tile-caption { text-align: center; }
 .gallery.curated section { scroll-margin-top: 0; }
+.curated-foot { display: flex; justify-content: center; margin: 8px 0 24px; }
+.curated-foot .download-btn { width: auto; }
 @media (max-width: 760px) {
   .curated-top { padding: 14px 12px 4px; gap: 10px 16px; }
   .curated-who { width: 100%; }

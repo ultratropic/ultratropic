@@ -135,7 +135,13 @@ function extend(s: Omit<ReviewerSession, 'exp'>, t: Target): Omit<ReviewerSessio
  * picks are left out, except their own. Returned after every toggle, so it must
  * agree with the gallery or the number would give a hidden reviewer away.
  */
-async function visibleCount(c: Ctx, imageId: string, viewerId: string): Promise<{ n: number } | null> {
+async function visibleCount(c: Ctx, imageId: string, viewerId: string, onlyMine = false): Promise<{ n: number } | null> {
+  // A curated link shows only your own picks (see buildGallery).
+  if (onlyMine) {
+    return c.env.DB.prepare(`SELECT COUNT(*) n FROM selections WHERE image_id = ? AND reviewer_id = ?`)
+      .bind(imageId, viewerId)
+      .first<{ n: number }>();
+  }
   return c.env.DB.prepare(
     `SELECT COUNT(*) n FROM selections s JOIN reviewers r ON r.id = s.reviewer_id
       WHERE s.image_id = ? AND (r.hidden = 0 OR r.id = ?)`,
@@ -337,7 +343,7 @@ export function reviewerRoutes(resolve: Resolve) {
       .bind(gate.t.project.id, imageId, gate.s.rid, Date.now())
       .run();
 
-    const count = await visibleCount(c, imageId, gate.s.rid);
+    const count = await visibleCount(c, imageId, gate.s.rid, !!gate.t.curated);
     return c.json({ selected: true, count: count?.n ?? 1 });
   });
 
@@ -351,7 +357,7 @@ export function reviewerRoutes(resolve: Resolve) {
       .bind(imageId, gate.s.rid)
       .run();
 
-    const count = await visibleCount(c, imageId, gate.s.rid);
+    const count = await visibleCount(c, imageId, gate.s.rid, !!gate.t.curated);
     return c.json({ selected: false, count: count?.n ?? 0 });
   });
 
