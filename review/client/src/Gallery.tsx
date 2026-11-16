@@ -1049,11 +1049,12 @@ export default function Gallery({
           />
         )}
         <label>Show</label>
+        {/* Picking what to show starts from everyone again: an agency picked below is cleared. */}
         <nav style={{ marginBottom: 20 }}>
           {viewOnly ? (
             <button
               className={`side-link${filter.kind === 'all' ? ' active' : ''}`}
-              onClick={() => setFilter({ kind: 'all' })}
+              onClick={() => { setFilter({ kind: 'all' }); setAgency(null); }}
             >
               <span className="side-name">All selects</span>
               <span className="meta">{allTalentCount}</span>
@@ -1071,7 +1072,7 @@ export default function Gallery({
               title={'title' in f ? f.title : undefined}
               aria-label={'title' in f ? `${f.title}, ${f.n}` : undefined}
               className={`side-link${filter.kind === f.key && mode !== 'stats' ? ' active' : ''}`}
-              onClick={() => { setFilter({ kind: f.key }); setMode('browse'); }}
+              onClick={() => { setFilter({ kind: f.key }); setAgency(null); setMode('browse'); }}
             >
               <span className="side-name">{f.label}</span>
               <span className="meta">{f.n}</span>
@@ -1082,7 +1083,7 @@ export default function Gallery({
             <button
               key={r.id}
               className={`side-link${filter.kind === 'reviewer' && filter.id === r.id && mode !== 'stats' ? ' active' : ''}`}
-              onClick={() => { setFilter({ kind: 'reviewer', id: r.id }); setMode('browse'); }}
+              onClick={() => { setFilter({ kind: 'reviewer', id: r.id }); setAgency(null); setMode('browse'); }}
             >
               <span className="side-name">
                 {r.name}{r.isMe && <span className="you"> · you</span>}
