@@ -70,3 +70,15 @@ export function talentLabel(talentName: string | null | undefined, filename: str
   if (talentName?.trim()) return talentName.trim();
   return talentGroupName(null, filename) ? talentFromFilename(filename) : filename.replace(/\.[^.]+$/, '');
 }
+
+/** Casting: who a person is cast as, for the Men / Women / Kids filter. */
+export type TalentGroup = 'men' | 'women' | 'kids';
+
+/** A board's name says who's on it often enough ("Wilhelmina — Men", "Signature Kids"). */
+export function groupFromBoard(albumName: string | undefined | null): TalentGroup | null {
+  const n = (albumName ?? '').toLowerCase();
+  if (/\b(kids?|girls?|boys?|children|youth|teens?)\b/.test(n)) return 'kids';
+  if (/\b(women|woman|female|ladies)\b/.test(n)) return 'women';
+  if (/\b(men|man|male)\b/.test(n)) return 'men';
+  return null;
+}

@@ -171,6 +171,7 @@ admin.delete('/projects/:id', async (c) => {
     c.env.DB.prepare(`DELETE FROM selections WHERE project_id = ?`).bind(projectId),
     c.env.DB.prepare(`DELETE FROM notes      WHERE project_id = ?`).bind(projectId),
     c.env.DB.prepare(`DELETE FROM images     WHERE project_id = ?`).bind(projectId),
+    c.env.DB.prepare(`DELETE FROM view_links WHERE project_id = ?`).bind(projectId),
     c.env.DB.prepare(`DELETE FROM reviewers  WHERE project_id = ?`).bind(projectId),
     c.env.DB.prepare(`DELETE FROM albums     WHERE project_id = ?`).bind(projectId),
     c.env.DB.prepare(`DELETE FROM projects   WHERE id = ?`).bind(projectId),
@@ -200,6 +201,7 @@ admin.delete('/reviewers/:id', async (c) => {
     // Their notes go, and so do replies others wrote under them.
     c.env.DB.prepare(`DELETE FROM notes WHERE parent_id IN (SELECT id FROM notes WHERE reviewer_id = ?)`).bind(r.id),
     c.env.DB.prepare(`DELETE FROM notes WHERE reviewer_id = ?`).bind(r.id),
+    c.env.DB.prepare(`DELETE FROM view_links WHERE reviewer_id = ?`).bind(r.id),
     c.env.DB.prepare(`DELETE FROM reviewers WHERE id = ?`).bind(r.id),
   ]);
   return c.json({ removed: r.display_name, selections: removed?.n ?? 0 });
@@ -234,9 +236,41 @@ admin.post('/projects/:pid/reset', async (c) => {
       `DELETE FROM notes WHERE project_id = ?1 AND (reviewer_id IN (SELECT id FROM reviewers WHERE project_id = ?1 AND user_id IS NULL)
          OR parent_id IN (SELECT id FROM notes WHERE reviewer_id IN (SELECT id FROM reviewers WHERE project_id = ?1 AND user_id IS NULL)))`,
     ).bind(projectId),
+    c.env.DB.prepare(
+      `DELETE FROM view_links WHERE reviewer_id IN (SELECT id FROM reviewers WHERE project_id = ? AND user_id IS NULL)`,
+    ).bind(projectId),
     c.env.DB.prepare(`DELETE FROM reviewers WHERE project_id = ? AND user_id IS NULL`).bind(projectId),
   ]);
   return c.json({ selectionsCleared: sel?.n ?? 0, reviewersRemoved: rev?.n ?? 0 });
+});
+
+/**
+ * The view-only link for one person's selects (reviewerId) or everyone's
+ * (reviewerId null): the existing one, or a new one. rotate: true replaces it,
+ * so the old address stops working.
+ */
+admin.post('/projects/:pid/view-link', async (c) => {
+  const pid = c.req.param('pid');
+  const body = await c.req.json<{ reviewerId?: string | null; rotate?: boolean }>().catch(() => ({}) as { reviewerId?: string | null; rotate?: boolean });
+  const rid = body.reviewerId ?? null;
+  if (rid !== null) {
+    if (typeof rid !== 'string') return c.json({ error: 'reviewerId: string or null' }, 400);
+    const r = await c.env.DB.prepare(`SELECT 1 FROM reviewers WHERE id = ? AND project_id = ?`).bind(rid, pid).first();
+    if (!r) return c.json({ error: 'reviewer not found' }, 404);
+  }
+  const existing = await c.env.DB.prepare(
+    `SELECT id, token FROM view_links WHERE project_id = ?1 AND reviewer_id IS ?2`,
+  )
+    .bind(pid, rid)
+    .first<{ id: string; token: string }>();
+  if (existing && body.rotate !== true) return c.json({ token: existing.token });
+  const fresh = token(24);
+  await c.env.DB.batch([
+    ...(existing ? [c.env.DB.prepare(`DELETE FROM view_links WHERE id = ?`).bind(existing.id)] : []),
+    c.env.DB.prepare(`INSERT INTO view_links (id, project_id, token, reviewer_id, created_at) VALUES (?, ?, ?, ?, ?)`)
+      .bind(ulid(), pid, fresh, rid, Date.now()),
+  ]);
+  return c.json({ token: fresh });
 });
 
 /** Per-project settings the owner can change after creating it. */

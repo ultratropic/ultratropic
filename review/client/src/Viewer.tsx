@@ -952,10 +952,10 @@ export default function Viewer({
             </button>
           )}
           <span className="meta hint-keys">
-            {notesOpen ? (drawing ? 'Drag on the photo to draw · ⌘Z to undo · ' : 'Click the photo to pin a note · ') : ''}← → to move · F or Space to select · +/− to zoom · Esc to close
+            {notesOpen ? (drawing ? 'Drag on the photo to draw · ⌘Z to undo · ' : 'Click the photo to pin a note · ') : ''}← → to move · {onToggle ? 'F or Space to select · ' : ''}+/− to zoom · Esc to close
           </span>
           <span className="meta hint-touch">
-            {notesOpen ? (drawing ? 'Draw with one finger · two fingers to zoom and move' : 'Tap the photo to pin a note · pinch to zoom') : 'Swipe · double-tap to select · pinch to zoom'}
+            {notesOpen ? (drawing ? 'Draw with one finger · two fingers to zoom and move' : 'Tap the photo to pin a note · pinch to zoom') : (onToggle ? 'Swipe · double-tap to select · pinch to zoom' : 'Swipe · pinch to zoom')}
           </span>
         </span>
         {onToggle ? (

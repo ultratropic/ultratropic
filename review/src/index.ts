@@ -3,6 +3,8 @@ import adminRoutes from './routes/admin';
 import uploadRoutes from './routes/upload';
 import selectionRoutes from './routes/selections';
 import { reviewerRoutes, byProjectSlug, byAlbumToken } from './routes/reviewer';
+import viewRoutes from './routes/view';
+import { findViewLink, viewScope } from './lib/views';
 import exportRoutes from './routes/export';
 import authRoutes from './routes/auth';
 import { landing, pricing, terms, privacy, refunds } from './site/pages';
@@ -77,21 +79,30 @@ app.get('/i/:key', async (c) => {
   // hold a session for the project this frame belongs to, covering its album —
   // so neither a reviewer of another shoot nor a client of another album, nor
   // another customer, can fetch it, even holding the key.
+  // A view-only page (/v/<token>) carries its token on each image address
+  // instead: it opens exactly the photos that page shows, and no others.
+  const viewToken = c.req.query('v');
   const ownerSession = await readOwner(c);
-  if (!ownerSession && !hasAnyReviewerCookie(c)) return c.text('unauthorized', 401);
+  if (!ownerSession && !hasAnyReviewerCookie(c) && !viewToken) return c.text('unauthorized', 401);
   const frame = await c.env.DB.prepare(
-    `SELECT i.project_id, i.album_id, p.workspace_id
+    `SELECT i.id, i.project_id, i.album_id, i.talent_name, i.original_filename, p.workspace_id
        FROM images i JOIN projects p ON p.id = i.project_id
       WHERE i.thumb_key = ?1 OR i.preview_key = ?1 LIMIT 1`,
   )
     .bind(key)
-    .first<{ project_id: string; album_id: string; workspace_id: string | null }>();
+    .first<{ id: string; project_id: string; album_id: string; talent_name: string | null; original_filename: string; workspace_id: string | null }>();
   if (!frame) return c.text('not found', 404);
-  const ownsIt = !!ownerSession && frame.workspace_id === ownerSession.wid &&
+  if (viewToken) {
+    const link = await findViewLink(c.env, viewToken);
+    if (!link || link.project_id !== frame.project_id || !(await viewScope(c.env, link))(frame)) {
+      return c.text('not found', 404);
+    }
+  }
+  const ownsIt = !viewToken && !!ownerSession && frame.workspace_id === ownerSession.wid &&
     !!(await c.env.DB.prepare(`SELECT 1 FROM members WHERE workspace_id = ? AND user_id = ?`)
       .bind(ownerSession.wid, ownerSession.uid)
       .first());
-  if (!ownsIt) {
+  if (!ownsIt && !viewToken) {
     const session = await readReviewerFor(c, frame.project_id);
     if (!session || !canSeeAlbum(session, frame.album_id)) return c.text('not found', 404);
     // A removed reviewer's cookie is still validly signed: check they still exist,
@@ -172,6 +183,7 @@ app.route('/api/admin', selectionRoutes);
 app.route('/api/admin', exportRoutes);
 app.route('/api/p', reviewerRoutes(byProjectSlug));
 app.route('/api/a', reviewerRoutes(byAlbumToken));
+app.route('/api/v', viewRoutes);
 
 app.all('/api/*', (c) => c.json({ error: 'not found' }, 404));
 

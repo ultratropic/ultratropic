@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
 import ReviewerApp from './ReviewerApp';
+import ViewOnly from './ViewOnly';
 import SignIn from './SignIn';
 import { loadBrand } from './brand';
 import { uploadFiles } from './uploadPipeline';
@@ -13,11 +14,14 @@ import './styles.css';
 
 // /p/<slug> is the project link (every album); /a/<token> is a client album link.
 const match = window.location.pathname.match(/^\/(p|a)\/([A-Za-z0-9]+)/);
+// /v/<token> is a view-only page of selects, for clients.
+const view = window.location.pathname.match(/^\/v\/([A-Za-z0-9]+)/);
 
 void loadBrand().then(() =>
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
-      {match ? <ReviewerApp base={`/api/${match[1]}/${match[2]}`} />
+      {view ? <ViewOnly token={view[1]!} />
+        : match ? <ReviewerApp base={`/api/${match[1]}/${match[2]}`} />
         : location.pathname === '/signin' ? <SignIn /> : <App />}
     </StrictMode>,
   ));

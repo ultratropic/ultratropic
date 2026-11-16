@@ -13,7 +13,7 @@ import { useNoZoom } from './useNoZoom';
 import { downloadOne, downloadZip } from './download';
 import NameGate from './NameGate';
 import type { ProjectNote } from './retouchSheet';
-import { talentGroupName, talentLabel } from '../../shared/names';
+import { talentGroupName, talentLabel, groupFromBoard, type TalentGroup } from '../../shared/names';
 
 export interface GalleryImg extends Img {
   album: number;
@@ -24,18 +24,9 @@ export interface GalleryImg extends Img {
   group?: TalentGroup | null;
 }
 
-type TalentGroup = 'men' | 'women' | 'kids';
 const GROUPS: Array<{ key: TalentGroup; label: string }> = [
   { key: 'men', label: 'Men' }, { key: 'women', label: 'Women' }, { key: 'kids', label: 'Kids' },
 ];
-/** A board's name says who's on it often enough ("Wilhelmina — Men", "Signature Kids"). */
-const groupFromBoard = (albumName: string | undefined): TalentGroup | null => {
-  const n = (albumName ?? '').toLowerCase();
-  if (/\b(kids?|girls?|boys?|children|youth|teens?)\b/.test(n)) return 'kids';
-  if (/\b(women|woman|female|ladies)\b/.test(n)) return 'women';
-  if (/\b(men|man|male)\b/.test(n)) return 'men';
-  return null;
-};
 
 interface Album extends ShareState { id: string; name: string; slug: string }
 interface Reviewer { id: string; name: string; isMe: boolean; count: number; lastSeen?: number; hidden?: boolean }
@@ -167,6 +158,8 @@ export default function Gallery({
   const [agency, setAgency] = useState<number | null>(null);
   /** Casting: Men / Women / Kids, on top of whichever filter is on. */
   const [who, setWho] = useState<'all' | TalentGroup>('all');
+  /** Owner: view-only links already fetched this visit, by reviewer id ('all' = everyone's selects). */
+  const [viewTokens, setViewTokens] = useState<Record<string, string>>({});
   useNoZoom();
   const [initialView] = useState(viewFromUrl);
   const [arrival] = useState(() => {
@@ -899,6 +892,12 @@ export default function Gallery({
     }
   })();
 
+  /** Owner: whose selects a view-only link would show for the current view, if any. */
+  const viewKey: string | null = !admin || mode !== 'browse' ? null
+    : filter.kind === 'mine' ? data.me.id
+      : filter.kind === 'reviewer' ? filter.id
+        : filter.kind === 'any' ? 'all' : null;
+
   /** For the person who opened a shared link: what they were sent. */
   const sharedLabel = (() => {
     if (!shareNote) return null;
@@ -1193,6 +1192,25 @@ export default function Gallery({
                   <p className="meta" style={{ margin: '-10px 0 16px' }}>
                     This person is hidden from reviewers, so the link opens on all photos.
                   </p>
+                )}
+              </>
+            )}
+            {viewKey && (
+              <>
+                <label>View-only link · {shareTarget?.label}</label>
+                {viewTokens[viewKey] ? (
+                  <CopyLink url={`${location.origin}/v/${viewTokens[viewKey]}`} />
+                ) : (
+                  <button className="ghost" style={{ width: '100%', marginBottom: 16 }}
+                    title="A page of just these selects for a client: nothing to click but the photos"
+                    onClick={async () => {
+                      const r = await api<{ token: string }>(`/api/admin/projects/${data.project.id}/view-link`, {
+                        method: 'POST', body: JSON.stringify({ reviewerId: viewKey === 'all' ? null : viewKey }),
+                      });
+                      setViewTokens((t) => ({ ...t, [viewKey]: r.token }));
+                    }}>
+                    Get view-only link
+                  </button>
                 )}
               </>
             )}
