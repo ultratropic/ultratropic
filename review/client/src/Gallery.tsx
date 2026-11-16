@@ -48,6 +48,8 @@ interface GalleryData {
   rows: unknown[][];
   /** View-only links: where the page opens — one person's selects, or (null) everyone's. */
   view?: { person: string | null };
+  /** Curated links (/c/): titled sections of chosen people, each with its photos' ids. */
+  curated?: { title: string | null; sections: Array<{ title: string; ids: string[] }> };
 }
 
 export type Filter =
@@ -174,7 +176,9 @@ export default function Gallery({
   /** Owner: view-only links already fetched this visit, by reviewer id ('all' = everyone's selects). */
   const [viewTokens, setViewTokens] = useState<Record<string, string>>({});
   useNoZoom();
-  const [initialView] = useState(() => (viewOnly ? { filter: { kind: 'all' } as Filter, stats: false } : viewFromUrl()));
+  /** A curated link (/c/<token>): its sections, no sidebar, no filters. */
+  const curatedLink = base.startsWith('/api/c/');
+  const [initialView] = useState(() => (viewOnly || curatedLink ? { filter: { kind: 'all' } as Filter, stats: false } : viewFromUrl()));
   const [arrival] = useState(() => {
     const q = new URLSearchParams(location.search);
     return { shared: q.get('shared') === '1', album: q.get('album') };
@@ -231,6 +235,7 @@ export default function Gallery({
       return;
     }
     setData(d);
+    if (d.curated) document.title = d.curated.title ? `${d.curated.title} · ${d.project.name}` : d.project.name;
     if (viewOnly) {
       document.title = `Selects · ${d.project.name}`;
       // First load only: open on the selects the link was made for.
@@ -300,10 +305,10 @@ export default function Gallery({
   }, [data, filter]);
 
   useEffect(() => {
-    if (mode === 'upload' || viewOnly) return;
+    if (mode === 'upload' || viewOnly || curatedLink) return;
     const query = viewToQuery(filter, mode === 'stats');
     if (location.search !== query) history.replaceState(history.state, '', location.pathname + query);
-  }, [filter, mode, viewOnly]);
+  }, [filter, mode, viewOnly, curatedLink]);
 
   // Remember scroll position per view, and put it back after a refresh. The
   // grids size themselves after first render, so retry until the page is tall
@@ -593,7 +598,18 @@ export default function Gallery({
   // Casting: the name search narrows whatever filter is on.
   // A casting is one grid of everyone, A to Z (the agency shows by each name),
   // optionally narrowed to one agency's board from the sidebar.
+  /** Curated link: each photo's place on the page — section by section, people in the link's order. */
+  const curatedRank = useMemo(() => {
+    const m = new Map<string, { section: number; at: number }>();
+    data?.curated?.sections.forEach((s, section) => s.ids.forEach((id, at) => m.set(id, { section, at })));
+    return data?.curated ? m : null;
+  }, [data?.curated]);
   const visible = useMemo(() => {
+    if (curatedRank) {
+      const rank = (i: GalleryImg) => curatedRank.get(i.id) ?? { section: Infinity, at: 0 };
+      return byFilter.filter((i) => curatedRank.has(i.id))
+        .sort((a, b) => rank(a).section - rank(b).section || rank(a).at - rank(b).at);
+    }
     if (!casting) return byFilter;
     const q = query.trim().toLowerCase();
     let list = agencyAlbums === null ? byFilter : byFilter.filter((i) => agencyAlbums.has(i.album));
@@ -601,7 +617,7 @@ export default function Gallery({
     if (q) list = list.filter((i) => talentName(i).toLowerCase().includes(q));
     const name = (i: GalleryImg) => talentGroupName(i.name, i.filename) ?? talentName(i);
     return [...list].sort((a, b) => name(a).localeCompare(name(b), undefined, { sensitivity: 'base' }) || a.album - b.album);
-  }, [byFilter, casting, query, agencyAlbums, who, groupByPerson]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [byFilter, casting, query, agencyAlbums, who, groupByPerson, curatedRank]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * What full screen steps through. A shoot: the photos on screen. A casting:
@@ -997,15 +1013,47 @@ export default function Gallery({
     </>
   );
 
+  /** Who's reviewing (or "a guest"), with the way to change it. */
+  const whoLine = data.me.id ? (
+    <p className="meta" style={{ margin: 0 }}>
+      Reviewing as {data.me.name} ·{' '}
+      <button className="text-btn" onClick={async () => {
+        await api(`${base}/leave`, { method: 'POST' });
+        location.reload();
+      }}>not you?</button>
+    </p>
+  ) : (
+    <p className="meta" style={{ margin: 0 }}>
+      Viewing as a guest ·{' '}
+      <button className="text-btn" onClick={() => needName('so your hearts and notes are yours', () => {})}>
+        add your name
+      </button>
+    </p>
+  );
+  const curated = data.curated ?? null;
+
   const albumTitle = data.albums.length === 1 && !admin && !data.project.slug ? data.albums[0]!.name : null;
 
   return (
     <div
-      className={`gallery${canDownload ? '' : ' no-save'}`}
+      className={`gallery${canDownload ? '' : ' no-save'}${curated ? ' curated' : ''}`}
       onContextMenu={canDownload ? undefined : (e) => {
         if ((e.target as HTMLElement).tagName === 'IMG') e.preventDefault();
       }}
     >
+      {curated ? (
+        <header className="curated-top">
+          <Logo width={112} />
+          <div className="curated-title">
+            <h1>{data.project.name}</h1>
+            {curated.title && <p className="meta">{curated.title}</p>}
+          </div>
+          <div className="curated-who">
+            {downloadButton}
+            {whoLine}
+          </div>
+        </header>
+      ) : <>
       <div className="mobile-bar">
         <Logo width={112} />
         <button className="mobile-menu" aria-expanded={menuOpen} aria-label={`Menu: ${viewLabel}`}
@@ -1363,25 +1411,11 @@ export default function Gallery({
         ) : viewOnly ? null : (
           <div className="side-foot">
             {downloadButton}
-            {data.me.id ? (
-              <p className="meta" style={{ margin: 0 }}>
-                Reviewing as {data.me.name} ·{' '}
-                <button className="text-btn" onClick={async () => {
-                  await api(`${base}/leave`, { method: 'POST' });
-                  location.reload();
-                }}>not you?</button>
-              </p>
-            ) : (
-              <p className="meta" style={{ margin: 0 }}>
-                Viewing as a guest ·{' '}
-                <button className="text-btn" onClick={() => needName('so your hearts and notes are yours', () => {})}>
-                  add your name
-                </button>
-              </p>
-            )}
+            {whoLine}
           </div>
         )}
       </aside>
+      </>}
 
       <main className="main">
         {mode === 'upload' && (
@@ -1489,7 +1523,40 @@ export default function Gallery({
                 : 'Nothing selected yet.'}
           </p>
         )}
-        {mode === 'browse' && casting && (() => {
+        {mode === 'browse' && curated && curated.sections.map((sec, n) => {
+          const ids = new Set(sec.ids);
+          const list = tilesFor(visible.filter((img) => ids.has(img.id)));
+          if (list.length === 0) return null;
+          const picked = list.filter((x) => x.mine).length;
+          return (
+            <section key={n}>
+              <header className="section-head">
+                <h3>{sec.title}</h3>
+                <span className="meta">
+                  {list.length} {list.length === 1 ? 'person' : 'people'}
+                  {picked > 0 && ` · ${picked} selected`}
+                </span>
+              </header>
+              <Grid
+                images={list}
+                onOpen={(localIndex) => {
+                  const img = list[localIndex];
+                  const i = img ? indexOf.get(img.id) : undefined;
+                  if (i !== undefined) openViewer(i);
+                }}
+                onToggle={casting ? toggleTile : toggle}
+                onDownload={canDownload ? downloadFrame : undefined}
+                showNames={false}
+                caption={casting ? (img) => ({
+                  title: talentName(img),
+                  tag: [...new Set((peopleByKey?.get(personKey(img as GalleryImg)) ?? [img as GalleryImg])
+                    .map((m) => agencyLabel(data.albums[m.album]?.name)))].filter(Boolean).join(', '),
+                }) : undefined}
+              />
+            </section>
+          );
+        })}
+        {mode === 'browse' && casting && !curated && (() => {
           const list = tilesFor(visible);
           const boards = agencyAlbums === null ? [] : [...agencyAlbums];
           const picked = list.filter((x) => x.mine).length;
@@ -1571,7 +1638,7 @@ export default function Gallery({
             </section>
           );
         })()}
-        {mode === 'browse' && !casting && data.albums.map((album, i) => {
+        {mode === 'browse' && !casting && !curated && data.albums.map((album, i) => {
           const photos = byAlbum.get(i) ?? [];
           if (photos.length === 0 && (filter.kind !== 'all' || (casting && query.trim()))) return null;
           const list = tilesFor(photos);

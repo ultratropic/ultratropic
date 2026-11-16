@@ -614,3 +614,21 @@ button.small { padding: 5px 12px; font-size: 13px; }
 .agency-boards { margin: -6px 0 16px; display: grid; gap: 4px; }
 .agency-boards > div { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
 .agency-boards .section-actions { margin-left: 0; }
+
+/* ---- curated links (/c/): no sidebar, a slim header, titled sections ---- */
+.gallery.curated { display: block; }
+.curated-top {
+  display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
+  padding: 18px 20px 6px;
+}
+.curated-title { flex: 1; min-width: 0; }
+.curated-title h1 { font-size: 16px; font-weight: 500; margin: 0; }
+.curated-title .meta { margin: 2px 0 0; }
+.curated-who { display: flex; align-items: center; gap: 16px; }
+.curated-who .download-btn { width: auto; margin: 0; }
+.gallery.curated .section-head { top: 0; }
+.gallery.curated section { scroll-margin-top: 0; }
+@media (max-width: 760px) {
+  .curated-top { padding: 14px 12px 4px; gap: 10px 16px; }
+  .curated-who { width: 100%; }
+}

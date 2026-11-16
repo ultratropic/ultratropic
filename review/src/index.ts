@@ -2,7 +2,8 @@ import { Hono } from 'hono';
 import adminRoutes from './routes/admin';
 import uploadRoutes from './routes/upload';
 import selectionRoutes from './routes/selections';
-import { reviewerRoutes, byProjectSlug, byAlbumToken } from './routes/reviewer';
+import { reviewerRoutes, byProjectSlug, byAlbumToken, byCuratedToken } from './routes/reviewer';
+import { curatedLinksById, inCurated } from './lib/curated';
 import viewRoutes from './routes/view';
 import { findViewLink } from './lib/views';
 import exportRoutes from './routes/export';
@@ -104,7 +105,12 @@ app.get('/i/:key', async (c) => {
       .first());
   if (!ownsIt && !viewToken) {
     const session = await readReviewerFor(c, frame.project_id);
-    if (!session || !canSeeAlbum(session, frame.album_id)) return c.text('not found', 404);
+    if (!session) return c.text('not found', 404);
+    // An album this device was let into, or a person on a curated link it opened.
+    if (!canSeeAlbum(session, frame.album_id)) {
+      const links = await curatedLinksById(c.env, frame.project_id, session.links ?? []);
+      if (!links.some((l) => inCurated(l, frame.talent_name, frame.original_filename))) return c.text('not found', 404);
+    }
     // A removed reviewer's cookie is still validly signed: check they still exist,
     // or they could keep loading photos whose addresses they'd already seen.
     // A guest (rid '') has no row to check: the link itself is their access.
@@ -183,6 +189,7 @@ app.route('/api/admin', selectionRoutes);
 app.route('/api/admin', exportRoutes);
 app.route('/api/p', reviewerRoutes(byProjectSlug));
 app.route('/api/a', reviewerRoutes(byAlbumToken));
+app.route('/api/c', reviewerRoutes(byCuratedToken));
 app.route('/api/v', viewRoutes);
 
 app.all('/api/*', (c) => c.json({ error: 'not found' }, 404));

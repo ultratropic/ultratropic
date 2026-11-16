@@ -14,6 +14,7 @@ import {
   dropCookie,
 } from '../lib/auth';
 import { buildGallery } from '../lib/gallery';
+import { curatedByToken, inCurated, type CuratedLink } from '../lib/curated';
 import type { Env, ReviewerSession, Vars } from '../types';
 
 type Ctx = Context<{ Bindings: Env; Variables: Vars }>;
@@ -33,6 +34,8 @@ interface Target {
     password_hash: string | null;
     password_salt: string | null;
   } | null;
+  /** Set when the link is a curated link (/c/): chosen people in sections. */
+  curated: CuratedLink | null;
 }
 
 type Resolve = (env: Env, key: string) => Promise<Target | null>;
@@ -44,7 +47,7 @@ export const byProjectSlug: Resolve = async (env, slug) => {
   )
     .bind(slug)
     .first<Target['project']>();
-  return p ? { project: p, album: null } : null;
+  return p ? { project: p, album: null, curated: null } : null;
 };
 
 /** /a/<token>: a client link — one album, guarded by its own password if it has one. */
@@ -67,14 +70,22 @@ export const byAlbumToken: Resolve = async (env, token) => {
       password_salt: row.password_salt,
     },
     album: { id: row.a_id, name: row.a_name, password_hash: row.a_hash, password_salt: row.a_salt },
+    curated: null,
   };
+};
+
+/** /c/<token>: a curated client link — chosen people in sections. The token is the key. */
+export const byCuratedToken: Resolve = async (env, token) => {
+  const found = await curatedByToken(env, token);
+  return found ? { project: found.project, album: null, curated: found.link } : null;
 };
 
 // Before guests, a password let you in for 30 minutes to type a name. No longer
 // issued; still honoured by /join and cleared there, for pages opened before.
 const UNLOCK_COOKIE = 'rv_unlock';
 
-const scopeOf = (t: Target) => (t.album ? `album:${t.album.id}` : `project:${t.project.id}`);
+const scopeOf = (t: Target) =>
+  t.curated ? `curated:${t.curated.id}` : t.album ? `album:${t.album.id}` : `project:${t.project.id}`;
 
 /**
  * Which password guards this link. An album's own password wins; an album without
@@ -82,6 +93,8 @@ const scopeOf = (t: Target) => (t.album ? `album:${t.album.id}` : `project:${t.p
  * than the project it came from.
  */
 function passwordFor(t: Target): { hash: string; salt: string } | null {
+  // A curated link is made for one client, like a view-only link: its token is the key.
+  if (t.curated) return null;
   if (t.album?.password_hash && t.album.password_salt) {
     return { hash: t.album.password_hash, salt: t.album.password_salt };
   }
@@ -108,9 +121,11 @@ async function liveSession(c: Ctx, t: Target): Promise<ReviewerSession | null> {
   return null;
 }
 
-const covers = (s: ReviewerSession, t: Target) => (t.album ? canSeeAlbum(s, t.album.id) : s.all);
+const covers = (s: ReviewerSession, t: Target) =>
+  t.curated ? s.all || (s.links ?? []).includes(t.curated.id) : t.album ? canSeeAlbum(s, t.album.id) : s.all;
 
 function extend(s: Omit<ReviewerSession, 'exp'>, t: Target): Omit<ReviewerSession, 'exp'> {
+  if (t.curated) return { ...s, links: [...new Set([...(s.links ?? []), t.curated.id])] };
   if (!t.album) return { ...s, all: true };
   return { ...s, albums: [...new Set([...s.albums, t.album.id])] };
 }
@@ -167,7 +182,7 @@ export function reviewerRoutes(resolve: Resolve) {
     }
     return c.json({
       name: t.project.name,
-      album: t.album?.name ?? null,
+      album: t.album?.name ?? t.curated?.title ?? null,
       hasPassword: !!passwordFor(t),
       joined: !!s && covers(s, t),
       known: !!s?.rid,
@@ -290,8 +305,9 @@ export function reviewerRoutes(resolve: Resolve) {
       reviewerId: s.rid,
       albumIds: t.album ? [t.album.id] : null,
       admin: false,
-      // A client on an album link must never learn the project link.
-      includeSlug: !t.album,
+      // A client on an album or curated link must never learn the project link.
+      includeSlug: !t.album && !t.curated,
+      curated: t.curated,
     });
     if (!payload) return c.json({ error: 'not found' }, 404);
     return c.json(payload);
@@ -299,11 +315,12 @@ export function reviewerRoutes(resolve: Resolve) {
 
   async function imageInScope(c: Ctx, t: Target, imageId: string): Promise<boolean> {
     const img = await c.env.DB.prepare(
-      `SELECT album_id FROM images WHERE id = ? AND project_id = ?`,
+      `SELECT album_id, talent_name, original_filename FROM images WHERE id = ? AND project_id = ?`,
     )
       .bind(imageId, t.project.id)
-      .first<{ album_id: string }>();
+      .first<{ album_id: string; talent_name: string | null; original_filename: string }>();
     if (!img) return false;
+    if (t.curated) return inCurated(t.curated, img.talent_name, img.original_filename);
     return t.album ? img.album_id === t.album.id : true;
   }
 

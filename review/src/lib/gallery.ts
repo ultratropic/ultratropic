@@ -1,5 +1,6 @@
 import { rawMatch } from '../../shared/names';
 import type { Env } from '../types';
+import { inCurated, curatedSections, type CuratedLink } from './curated';
 
 interface Options {
   projectId: string;
@@ -10,6 +11,8 @@ interface Options {
   admin: boolean;
   /** Only a project-wide session may learn the project link. */
   includeSlug: boolean;
+  /** A curated link: only the people it lists, laid out in its sections. */
+  curated?: CuratedLink | null;
 }
 
 /**
@@ -68,9 +71,13 @@ export async function buildGallery(env: Env, o: Options) {
   ]);
 
   const allowed = o.albumIds ? new Set(o.albumIds) : null;
-  const albums = albumsRes.results.filter((a) => !allowed || allowed.has(a.id));
+  // A curated link holds only its people, and only the boards they're on.
+  const curated = o.curated ?? null;
+  const pool = curated ? imagesRes.results.filter((i) => inCurated(curated, i.talent_name, i.original_filename)) : null;
+  const used = pool ? new Set(pool.map((i) => i.album_id)) : null;
+  const albums = albumsRes.results.filter((a) => (!allowed || allowed.has(a.id)) && (!used || used.has(a.id)));
   const albumIndex = new Map(albums.map((a, i) => [a.id, i]));
-  const images = imagesRes.results.filter((i) => albumIndex.has(i.album_id));
+  const images = (pool ?? imagesRes.results).filter((i) => albumIndex.has(i.album_id));
   const visibleIds = new Set(images.map((i) => i.id));
 
   // A hidden reviewer is invisible to everyone but the owner and themselves —
@@ -130,6 +137,7 @@ export async function buildGallery(env: Env, o: Options) {
       ...(o.admin ? { hasPassword: project.has_password === 1, coverImageId: project.cover_image_id } : {}),
     },
     reviewerId: o.reviewerId,
+    ...(curated ? { curated: { title: curated.title, sections: curatedSections(curated, images) } } : {}),
     me: { id: o.reviewerId, name: me?.display_name ?? '' },
     albums: albums.map((a) => ({
       id: a.id,

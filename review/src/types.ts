@@ -45,6 +45,8 @@ export interface ReviewerSession {
   all: boolean;
   /** Albums unlocked through client album links. Ignored when `all` is set. */
   albums: string[];
+  /** Curated links (/c/) opened on this device: their people's photos are visible. */
+  links?: string[];
   exp: number;
 }
 
