@@ -11,6 +11,7 @@ import type { Env } from '../types';
  *   { title, from: <reviewer id>, group: 'kids' }   — that person's current picks in this group
  *   { title, from: <reviewer id> }                  — the rest of that person's current picks
  * Someone named in a fixed section stays there; live sections fill A to Z.
+ * `hide: [names]` keeps people off the page whatever (e.g. not available).
  */
 export interface CuratedSection { title: string; people?: string[]; from?: string; group?: TalentGroup }
 export interface CuratedLink {
@@ -18,6 +19,8 @@ export interface CuratedLink {
   project_id: string;
   title: string | null;
   sections: CuratedSection[];
+  /** People kept off the page (grouping keys). */
+  hide: Set<string>;
   /** Where each person on the page goes (by grouping key), filled by resolve(). */
   place: Map<string, { section: number; order: number }>;
 }
@@ -32,7 +35,7 @@ type Row = { id: string; project_id: string; title: string | null; layout: strin
 
 function parse(row: Row): CuratedLink | null {
   try {
-    const l = JSON.parse(row.layout) as { sections?: unknown };
+    const l = JSON.parse(row.layout) as { sections?: unknown; hide?: unknown };
     if (!Array.isArray(l.sections)) return null;
     const sections: CuratedSection[] = l.sections
       .filter((s): s is Record<string, unknown> => !!s && typeof s.title === 'string')
@@ -42,7 +45,8 @@ function parse(row: Row): CuratedLink | null {
         from: typeof s.from === 'string' ? s.from : undefined,
         group: s.group === 'men' || s.group === 'women' || s.group === 'kids' ? s.group : undefined,
       }));
-    return { id: row.id, project_id: row.project_id, title: row.title, sections, place: new Map() };
+    const hide = new Set((Array.isArray(l.hide) ? l.hide : []).filter((p): p is string => typeof p === 'string').map((p) => p.trim().toLowerCase()));
+    return { id: row.id, project_id: row.project_id, title: row.title, sections, hide, place: new Map() };
   } catch {
     return null;
   }
@@ -53,7 +57,7 @@ async function resolve(env: Env, link: CuratedLink): Promise<CuratedLink> {
   const place = new Map<string, { section: number; order: number }>();
   link.sections.forEach((s, section) => (s.people ?? []).forEach((name, order) => {
     const k = name.trim().toLowerCase();
-    if (k && !place.has(k)) place.set(k, { section, order });
+    if (k && !place.has(k) && !link.hide.has(k)) place.set(k, { section, order });
   }));
 
   const followed = [...new Set(link.sections.map((s) => s.from).filter((r): r is string => !!r))];
@@ -77,7 +81,7 @@ async function resolve(env: Env, link: CuratedLink): Promise<CuratedLink> {
       p.board ??= groupFromBoard(r.album);
       people.set(k, p);
     }
-    const picked = [...people].filter(([k, p]) => p.picked && !place.has(k)).sort(([a], [b]) => a.localeCompare(b));
+    const picked = [...people].filter(([k, p]) => p.picked && !place.has(k) && !link.hide.has(k)).sort(([a], [b]) => a.localeCompare(b));
     for (const [k, p] of picked) {
       const group = p.set ?? p.board;
       let section = link.sections.findIndex((s) => s.from === rid && s.group && s.group === group);
@@ -110,7 +114,7 @@ export async function curatedLinksById(env: Env, projectId: string, ids: string[
  */
 export async function curatedAllows(env: Env, link: CuratedLink, talentName: string | null, filename: string): Promise<boolean> {
   const k = keyOf(talentName, filename);
-  if (!k) return false;
+  if (!k || link.hide.has(k)) return false;
   if (link.sections.some((s) => (s.people ?? []).some((p) => p.trim().toLowerCase() === k))) return true;
   for (const rid of new Set(link.sections.map((s) => s.from).filter((r): r is string => !!r))) {
     const res = await env.DB.prepare(
