@@ -36,7 +36,7 @@ const CAPTION_HEIGHT = 24; // px under each row when tiles carry a caption (one 
  * fill the width at roughly a target height, so frames keep their true aspect ratio
  * and nothing is cropped. Portrait and landscape can then sit side by side.
  */
-function layout(images: Img[], containerWidth: number, caption = 0): { rows: Row[]; total: number } {
+function layout(images: Img[], containerWidth: number, caption = 0, target = TARGET_ROW_HEIGHT): { rows: Row[]; total: number } {
   const rows: Row[] = [];
   let current: Img[] = [];
   let ratioSum = 0;
@@ -48,7 +48,7 @@ function layout(images: Img[], containerWidth: number, caption = 0): { rows: Row
     const available = containerWidth - gaps;
     // A trailing row keeps the target height rather than stretching to fill.
     const height = isLast
-      ? Math.min(TARGET_ROW_HEIGHT, available / ratioSum)
+      ? Math.min(target, available / ratioSum)
       : available / ratioSum;
     rows.push({
       items: current.map((img) => ({
@@ -68,7 +68,7 @@ function layout(images: Img[], containerWidth: number, caption = 0): { rows: Row
     current.push(img);
     ratioSum += img.w / img.h;
     const gaps = GAP * (current.length - 1);
-    if ((containerWidth - gaps) / ratioSum <= TARGET_ROW_HEIGHT) flush(false);
+    if ((containerWidth - gaps) / ratioSum <= target) flush(false);
   }
   flush(true);
   return { rows, total: top };
@@ -114,6 +114,8 @@ export default function Grid({
   onDownload,
   showNames = false,
   caption,
+  rowHeight = TARGET_ROW_HEIGHT,
+  center = false,
 }: {
   images: Img[];
   onOpen: (index: number) => void;
@@ -126,6 +128,10 @@ export default function Grid({
   showNames?: boolean;
   /** One line under each photo (casting: name · agency). */
   caption?: (img: Img) => { title: string; tag?: string | null };
+  /** Roughly how tall each row is. */
+  rowHeight?: number;
+  /** Centre a short last row instead of starting it at the left. */
+  center?: boolean;
 }) {
   const captionHeight = caption ? CAPTION_HEIGHT : 0;
   const ref = useRef<HTMLDivElement>(null);
@@ -173,8 +179,8 @@ export default function Grid({
   }, []);
 
   const { rows, total } = useMemo(
-    () => (width > 0 ? layout(images, width, captionHeight) : { rows: [], total: 0 }),
-    [images, width, captionHeight],
+    () => (width > 0 ? layout(images, width, captionHeight, rowHeight) : { rows: [], total: 0 }),
+    [images, width, captionHeight, rowHeight],
   );
 
   // Index of each image, so a click can open the viewer at the right position.
@@ -191,7 +197,7 @@ export default function Grid({
       {visible.map((row) => (
         <div
           key={row.top}
-          style={{ position: 'absolute', top: row.top, left: 0, display: 'flex', gap: GAP }}
+          style={{ position: 'absolute', top: row.top, left: 0, ...(center ? { right: 0, justifyContent: 'center' } : {}), display: 'flex', gap: GAP }}
         >
           {row.items.map(({ img, w, h }) => (
             <div key={img.id} style={{ width: w }}>

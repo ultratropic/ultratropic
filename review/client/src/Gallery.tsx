@@ -1527,15 +1527,10 @@ export default function Gallery({
           const ids = new Set(sec.ids);
           const list = tilesFor(visible.filter((img) => ids.has(img.id)));
           if (list.length === 0) return null;
-          const picked = list.filter((x) => x.mine).length;
           return (
             <section key={n}>
               <header className="section-head">
                 <h3>{sec.title}</h3>
-                <span className="meta">
-                  {list.length} {list.length === 1 ? 'person' : 'people'}
-                  {picked > 0 && ` · ${picked} selected`}
-                </span>
               </header>
               <Grid
                 images={list}
@@ -1547,6 +1542,8 @@ export default function Gallery({
                 onToggle={casting ? toggleTile : toggle}
                 onDownload={canDownload ? downloadFrame : undefined}
                 showNames={false}
+                rowHeight={340}
+                center
                 caption={casting ? (img) => ({
                   title: talentName(img),
                   tag: [...new Set((peopleByKey?.get(personKey(img as GalleryImg)) ?? [img as GalleryImg])
