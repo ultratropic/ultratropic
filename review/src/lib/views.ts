@@ -2,10 +2,10 @@ import { talentGroupName, groupFromBoard, type TalentGroup } from '../../shared/
 import type { Env } from '../types';
 
 /**
- * View-only links (/v/<token>): a client-facing page of one person's selects,
- * or of everyone's. Read-only and live — it shows the picks as they are now —
- * and the token reaches only the photos on that page, nothing else in the
- * project.
+ * View-only links (/v/<token>): a client-facing, read-only copy of the
+ * project's gallery — the whole pool, with whose selects are whose — opening
+ * on one person's selects (or on everyone's). Live: it shows the picks as they
+ * are now. The token reaches this project's photos and nothing else.
  */
 export interface ViewLink {
   id: string;
@@ -36,49 +36,13 @@ export async function findViewLink(env: Env, token: string | undefined): Promise
   return row;
 }
 
-interface Frame { id: string; talent_name: string | null; original_filename: string }
-
-/**
- * Which photos a link shows. A shoot: the picked frames. A casting: every
- * photo of each picked person (a pick there is a vote for the person), the
- * same as opening them in the gallery.
- */
-export async function viewScope(env: Env, link: ViewLink): Promise<(f: Frame) => boolean> {
-  // One person's picks; or, for an all-selects link, everyone's except hidden reviewers.
-  const picks = await env.DB.prepare(
-    `SELECT i.id, i.talent_name, i.original_filename
-       FROM selections s
-       JOIN images i ON i.id = s.image_id
-       JOIN reviewers r ON r.id = s.reviewer_id
-      WHERE s.project_id = ?1 AND (r.id = ?2 OR (?2 IS NULL AND r.hidden = 0))`,
-  )
-    .bind(link.project_id, link.reviewer_id)
-    .all<Frame>();
-  const ids = new Set(picks.results.map((p) => p.id));
-  const people = new Set<string>();
-  if (link.kind === 'casting') {
-    for (const p of picks.results) {
-      const k = talentGroupName(p.talent_name, p.original_filename);
-      if (k) people.add(k);
-    }
-  }
-  return (f) => {
-    if (ids.has(f.id)) return true;
-    if (!people.size) return false;
-    const k = talentGroupName(f.talent_name, f.original_filename);
-    return !!k && people.has(k);
-  };
-}
-
 /**
  * The view-only page is the normal gallery, read-only, so this answers in the
- * gallery's own shape (see lib/gallery.ts) — holding only the photos the link
- * reaches, and nothing about who picked them: no picks, no reviewers, no
- * notes, no brief, no downloads.
+ * gallery's own shape (see lib/gallery.ts): every photo, and the selects of
+ * everyone not hidden — but no notes, brief, emails, links or downloads.
  */
 export async function viewPayload(env: Env, link: ViewLink, token: string) {
-  const [inScope, albumsRes, imagesRes, picksRes] = await Promise.all([
-    viewScope(env, link),
+  const [albumsRes, imagesRes, picksRes] = await Promise.all([
     env.DB.prepare(`SELECT id, name FROM albums WHERE project_id = ? ORDER BY seq`)
       .bind(link.project_id)
       .all<{ id: string; name: string }>(),
@@ -99,16 +63,16 @@ export async function viewPayload(env: Env, link: ViewLink, token: string) {
     env.DB.prepare(
       `SELECT r.id AS rid, r.display_name, s.image_id
          FROM selections s JOIN reviewers r ON r.id = s.reviewer_id
-        WHERE s.project_id = ?1 AND (r.id = ?2 OR (?2 IS NULL AND r.hidden = 0))
+        WHERE s.project_id = ?1 AND (r.hidden = 0 OR r.id = ?2)
         ORDER BY r.created_at`,
     )
       .bind(link.project_id, link.reviewer_id)
       .all<{ rid: string; display_name: string; image_id: string }>(),
   ]);
-  const shown = imagesRes.results.filter(inScope);
+  const shown = imagesRes.results;
   const casting = link.kind === 'casting';
 
-  // Only the boards that hold something on this page, in their usual order.
+  // The boards that hold something, in their usual order.
   const used = new Set(shown.map((i) => i.album_id));
   const albums = albumsRes.results.filter((a) => used.has(a.id));
   const albumIndex = new Map(albums.map((a, n) => [a.id, n]));
@@ -132,6 +96,7 @@ export async function viewPayload(env: Env, link: ViewLink, token: string) {
   const selectionsByReviewer: Record<string, string[]> = {};
   for (const p of picksRes.results) {
     if (!shownIds.has(p.image_id)) continue;
+    // The link's own person always shows, even if hidden from reviewers in the app.
     let a = alias.get(p.rid);
     if (!a) {
       a = `p${alias.size + 1}`;
@@ -150,6 +115,8 @@ export async function viewPayload(env: Env, link: ViewLink, token: string) {
       allowDownloads: false, kind: casting ? 'casting' : 'shoot', brief: null,
     },
     me: { id: '', name: '' },
+    // Where the page opens: this person's selects, or (null) everyone's.
+    view: { person: link.reviewer_id ? alias.get(link.reviewer_id) ?? null : null },
     albums: albums.map((a) => ({ id: a.id, name: a.name, slug: '' })),
     reviewers,
     selectionsByReviewer,

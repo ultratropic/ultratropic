@@ -4,7 +4,7 @@ import uploadRoutes from './routes/upload';
 import selectionRoutes from './routes/selections';
 import { reviewerRoutes, byProjectSlug, byAlbumToken } from './routes/reviewer';
 import viewRoutes from './routes/view';
-import { findViewLink, viewScope } from './lib/views';
+import { findViewLink } from './lib/views';
 import exportRoutes from './routes/export';
 import authRoutes from './routes/auth';
 import { landing, pricing, terms, privacy, refunds } from './site/pages';
@@ -94,7 +94,7 @@ app.get('/i/:key', async (c) => {
   if (!frame) return c.text('not found', 404);
   if (viewToken) {
     const link = await findViewLink(c.env, viewToken);
-    if (!link || link.project_id !== frame.project_id || !(await viewScope(c.env, link))(frame)) {
+    if (!link || link.project_id !== frame.project_id) {
       return c.text('not found', 404);
     }
   }

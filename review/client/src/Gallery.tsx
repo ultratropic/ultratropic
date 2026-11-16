@@ -46,6 +46,8 @@ interface GalleryData {
   reviewers: Reviewer[];
   selectionsByReviewer: Record<string, string[]>;
   rows: unknown[][];
+  /** View-only links: where the page opens — one person's selects, or (null) everyone's. */
+  view?: { person: string | null };
 }
 
 export type Filter =
@@ -200,6 +202,7 @@ export default function Gallery({
   useEffect(() => { imagesRef.current = images; }, [images]);
 
   const [loadError, setLoadError] = useState('');
+  const viewOpened = useRef(false);
 
   /** The owner removed this reviewer: start over at the join screen. */
   /**
@@ -228,7 +231,14 @@ export default function Gallery({
       return;
     }
     setData(d);
-    if (viewOnly) document.title = `Selects · ${d.project.name}`;
+    if (viewOnly) {
+      document.title = `Selects · ${d.project.name}`;
+      // First load only: open on the selects the link was made for.
+      if (!viewOpened.current) {
+        viewOpened.current = true;
+        setFilter(d.view?.person ? { kind: 'reviewer', id: d.view.person } : { kind: 'any' });
+      }
+    }
     setImages(
       d.rows.map((r) => ({
         id: r[0] as string,
@@ -951,7 +961,7 @@ export default function Gallery({
             : filter.kind === 'notes' ? 'Notes'
             : filter.kind === 'dup' ? 'Possible duplicates'
               : filter.kind === 'reviewer' ? (reviewers.find((r) => r.id === filter.id)?.name ?? 'Selects')
-                : viewOnly ? 'All selects' : 'All photos';
+                : casting ? 'All talent' : 'All photos';
   const viewCount = mode === 'browse' ? countUnits(visible) : null;
 
   /** Copy link, private link and delete for one album (an album's header, or the agency picked in a casting). */
@@ -1051,22 +1061,14 @@ export default function Gallery({
         <label>Show</label>
         {/* Picking what to show starts from everyone again: an agency picked below is cleared. */}
         <nav style={{ marginBottom: 20 }}>
-          {viewOnly ? (
-            <button
-              className={`side-link${filter.kind === 'all' ? ' active' : ''}`}
-              onClick={() => { setFilter({ kind: 'all' }); setAgency(null); }}
-            >
-              <span className="side-name">All selects</span>
-              <span className="meta">{allTalentCount}</span>
-            </button>
-          ) : ([
+          {([
             { key: 'all', label: casting ? 'All talent' : 'All photos', n: allTalentCount },
             { key: 'mine', label: 'My selects', n: mineCount },
             { key: 'any', label: 'All selects', n: anyCount },
             { key: 'agreed', label: AGREED, n: agreedCount, title: AGREED_WORDS },
             { key: 'everyone', label: 'Everyone', n: everyoneCount, title: EVERYONE_WORDS },
             { key: 'notes', label: 'Notes', n: notesCount, title: 'Photos with retouch notes' },
-          ] as const).map((f) => (
+          ] as const).filter((f) => !viewOnly || f.key === 'all' || f.key === 'any').map((f) => (
             <button
               key={f.key}
               title={'title' in f ? f.title : undefined}
