@@ -104,6 +104,15 @@ const EVERYONE_WORDS =
 
 /** A board's agency for a casting caption: "Wilhelmina — Men" reads as "Wilhelmina". */
 const agencyLabel = (albumName: string | undefined) => albumName?.split(/\s+[—–-]\s+/)[0]?.trim() || albumName || null;
+/**
+ * The agency under a casting photo — none for boards that aren't an agency
+ * (influencers, people without one): they show by name only.
+ */
+const NOT_AN_AGENCY = /^(influencers?|creators?|no agency|unrepresented|independent|self[- ]?rep(resented)?)$/i;
+const agencyTag = (albumName: string | undefined) => {
+  const a = agencyLabel(albumName);
+  return a && !NOT_AN_AGENCY.test(a) ? a : null;
+};
 
 /** Who's in a casting photo: the name given, or one made from the filename. */
 const talentName = (img: { name?: string | null; filename: string }) => talentLabel(img.name, img.filename);
@@ -1547,7 +1556,7 @@ export default function Gallery({
                 caption={casting ? (img) => ({
                   title: talentName(img),
                   tag: [...new Set((peopleByKey?.get(personKey(img as GalleryImg)) ?? [img as GalleryImg])
-                    .map((m) => agencyLabel(data.albums[m.album]?.name)))].filter(Boolean).join(', '),
+                    .map((m) => agencyTag(data.albums[m.album]?.name)))].filter(Boolean).join(', '),
                 }) : undefined}
               />
             </section>
@@ -1629,7 +1638,7 @@ export default function Gallery({
                   // Every board they're on, e.g. "Client requests, LA Models".
                   tag: agency === null
                     ? [...new Set((peopleByKey?.get(personKey(img as GalleryImg)) ?? [img as GalleryImg])
-                      .map((m) => agencyLabel(data.albums[m.album]?.name)))].filter(Boolean).join(', ')
+                      .map((m) => agencyTag(data.albums[m.album]?.name)))].filter(Boolean).join(', ')
                     : null,
                 })}
               />
@@ -1722,7 +1731,11 @@ export default function Gallery({
             });
             setData((d) => d && { ...d, project: { ...d.project, coverImageId: id } });
           } : undefined}
-          albumName={data.albums[viewerList[openIndex]!.album]?.name}
+          albumName={(() => {
+            // A casting board that isn't an agency (influencers…) isn't shown: names only.
+            const name = data.albums[viewerList[openIndex]!.album]?.name;
+            return casting && !agencyTag(name) ? undefined : name;
+          })()}
           talent={casting ? (img) => {
             const members = peopleByKey?.get(personKey(img as GalleryImg)) ?? [];
             const at = members.findIndex((m) => m.id === img.id);
