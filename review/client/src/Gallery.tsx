@@ -1543,6 +1543,7 @@ export default function Gallery({
                 onDownload={canDownload ? downloadFrame : undefined}
                 showNames={false}
                 rowHeight={340}
+                maxPerRow={4}
                 center
                 caption={casting ? (img) => ({
                   title: talentName(img),

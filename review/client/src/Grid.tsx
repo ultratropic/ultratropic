@@ -36,7 +36,7 @@ const CAPTION_HEIGHT = 24; // px under each row when tiles carry a caption (one 
  * fill the width at roughly a target height, so frames keep their true aspect ratio
  * and nothing is cropped. Portrait and landscape can then sit side by side.
  */
-function layout(images: Img[], containerWidth: number, caption = 0, target = TARGET_ROW_HEIGHT): { rows: Row[]; total: number } {
+function layout(images: Img[], containerWidth: number, caption = 0, target = TARGET_ROW_HEIGHT, maxPerRow = Infinity): { rows: Row[]; total: number } {
   const rows: Row[] = [];
   let current: Img[] = [];
   let ratioSum = 0;
@@ -68,7 +68,7 @@ function layout(images: Img[], containerWidth: number, caption = 0, target = TAR
     current.push(img);
     ratioSum += img.w / img.h;
     const gaps = GAP * (current.length - 1);
-    if ((containerWidth - gaps) / ratioSum <= target) flush(false);
+    if ((containerWidth - gaps) / ratioSum <= target || current.length >= maxPerRow) flush(false);
   }
   flush(true);
   return { rows, total: top };
@@ -116,6 +116,7 @@ export default function Grid({
   caption,
   rowHeight = TARGET_ROW_HEIGHT,
   center = false,
+  maxPerRow,
 }: {
   images: Img[];
   onOpen: (index: number) => void;
@@ -132,6 +133,8 @@ export default function Grid({
   rowHeight?: number;
   /** Centre a short last row instead of starting it at the left. */
   center?: boolean;
+  /** At most this many photos to a row. */
+  maxPerRow?: number;
 }) {
   const captionHeight = caption ? CAPTION_HEIGHT : 0;
   const ref = useRef<HTMLDivElement>(null);
@@ -179,8 +182,8 @@ export default function Grid({
   }, []);
 
   const { rows, total } = useMemo(
-    () => (width > 0 ? layout(images, width, captionHeight, rowHeight) : { rows: [], total: 0 }),
-    [images, width, captionHeight, rowHeight],
+    () => (width > 0 ? layout(images, width, captionHeight, rowHeight, maxPerRow) : { rows: [], total: 0 }),
+    [images, width, captionHeight, rowHeight, maxPerRow],
   );
 
   // Index of each image, so a click can open the viewer at the right position.

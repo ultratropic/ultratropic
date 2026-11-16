@@ -149,7 +149,7 @@ export function reviewerRoutes(resolve: Resolve) {
 
   async function load(c: Ctx): Promise<Target | null> {
     const key = c.req.param('key');
-    if (!key || !/^[A-Za-z0-9]{6,64}$/.test(key)) return null;
+    if (!key || !/^[A-Za-z0-9-]{6,64}$/.test(key)) return null;
     const t = await resolve(c.env, key);
     return t && t.project.status === 'active' ? t : null;
   }

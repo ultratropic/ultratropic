@@ -14,7 +14,7 @@ import './styles.css';
 
 // /p/<slug> is the project link (every album); /a/<token> is a client album link.
 // /c/<token> is a curated client link: chosen people in sections, no sidebar.
-const match = window.location.pathname.match(/^\/(p|a|c)\/([A-Za-z0-9]+)/);
+const match = window.location.pathname.match(/^\/(p|a|c)\/([A-Za-z0-9-]+)/);
 // /v/<token> is a view-only page of selects, for clients.
 const view = window.location.pathname.match(/^\/v\/([A-Za-z0-9]+)/);
 

@@ -15,7 +15,8 @@ export interface CuratedLink {
   sections: CuratedSection[];
 }
 
-export const CURATED_TOKEN = /^[A-Za-z0-9]{24,64}$/;
+/** A random token, or a readable slug set on the link (lowercase words joined by hyphens). */
+export const CURATED_TOKEN = /^(?:[A-Za-z0-9]{24,64}|[a-z0-9]+(?:-[a-z0-9]+)*)$/;
 
 function parse(row: { id: string; project_id: string; title: string | null; layout: string }): CuratedLink | null {
   try {
@@ -48,7 +49,7 @@ export async function curatedByToken(env: Env, token: string) {
     `SELECT c.id, c.project_id, c.title, c.layout,
             p.name AS p_name, p.status AS p_status, p.password_hash, p.password_salt
        FROM curated_links c JOIN projects p ON p.id = c.project_id
-      WHERE c.token = ?`,
+      WHERE c.token = ?1 OR c.slug = ?1`,
   )
     .bind(token)
     .first<{
