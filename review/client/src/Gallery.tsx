@@ -931,7 +931,7 @@ export default function Gallery({
             : filter.kind === 'notes' ? 'Notes'
             : filter.kind === 'dup' ? 'Possible duplicates'
               : filter.kind === 'reviewer' ? (reviewers.find((r) => r.id === filter.id)?.name ?? 'Selects')
-                : 'All photos';
+                : viewOnly ? 'All selects' : 'All photos';
   const viewCount = mode === 'browse' ? countUnits(visible) : null;
 
   /** Copy link, private link and delete for one album (an album's header, or the agency picked in a casting). */
@@ -1028,10 +1028,17 @@ export default function Gallery({
             onChange={(e) => { setQuery(e.target.value); setMode('browse'); }}
           />
         )}
-        {!viewOnly && <>
         <label>Show</label>
         <nav style={{ marginBottom: 20 }}>
-          {([
+          {viewOnly ? (
+            <button
+              className={`side-link${filter.kind === 'all' ? ' active' : ''}`}
+              onClick={() => setFilter({ kind: 'all' })}
+            >
+              <span className="side-name">All selects</span>
+              <span className="meta">{allTalentCount}</span>
+            </button>
+          ) : ([
             { key: 'all', label: casting ? 'All talent' : 'All photos', n: allTalentCount },
             { key: 'mine', label: 'My selects', n: mineCount },
             { key: 'any', label: 'All selects', n: anyCount },
@@ -1083,7 +1090,6 @@ export default function Gallery({
             </button>
           )}
         </nav>
-        </>}
 
         {admin && images.length > 0 && casting && (
           <>

@@ -77,7 +77,7 @@ export async function viewScope(env: Env, link: ViewLink): Promise<(f: Frame) =>
  * notes, no brief, no downloads.
  */
 export async function viewPayload(env: Env, link: ViewLink, token: string) {
-  const [inScope, albumsRes, imagesRes] = await Promise.all([
+  const [inScope, albumsRes, imagesRes, picksRes] = await Promise.all([
     viewScope(env, link),
     env.DB.prepare(`SELECT id, name FROM albums WHERE project_id = ? ORDER BY seq`)
       .bind(link.project_id)
@@ -95,6 +95,15 @@ export async function viewPayload(env: Env, link: ViewLink, token: string) {
         width: number; height: number; album_id: string;
         talent_name: string | null; link: string | null; info: string | null; talent_group: string | null;
       }>(),
+    // Whose selects these are, by name, for the sidebar's People list (as in the app).
+    env.DB.prepare(
+      `SELECT r.id AS rid, r.display_name, s.image_id
+         FROM selections s JOIN reviewers r ON r.id = s.reviewer_id
+        WHERE s.project_id = ?1 AND (r.id = ?2 OR (?2 IS NULL AND r.hidden = 0))
+        ORDER BY r.created_at`,
+    )
+      .bind(link.project_id, link.reviewer_id)
+      .all<{ rid: string; display_name: string; image_id: string }>(),
   ]);
   const shown = imagesRes.results.filter(inScope);
   const casting = link.kind === 'casting';
@@ -116,6 +125,23 @@ export async function viewPayload(env: Env, link: ViewLink, token: string) {
     }
   }
 
+  // Reviewers go out under stand-in ids (p1, p2…), never their real ones.
+  const shownIds = new Set(shown.map((i) => i.id));
+  const alias = new Map<string, string>();
+  const reviewers: Array<{ id: string; name: string; isMe: false; count: number }> = [];
+  const selectionsByReviewer: Record<string, string[]> = {};
+  for (const p of picksRes.results) {
+    if (!shownIds.has(p.image_id)) continue;
+    let a = alias.get(p.rid);
+    if (!a) {
+      a = `p${alias.size + 1}`;
+      alias.set(p.rid, a);
+      reviewers.push({ id: a, name: p.display_name, isMe: false, count: 0 });
+      selectionsByReviewer[a] = [];
+    }
+    selectionsByReviewer[a]!.push(p.image_id);
+  }
+
   // The token rides on each image address: it's what lets this page load them.
   const q = `?v=${token}`;
   return {
@@ -125,8 +151,8 @@ export async function viewPayload(env: Env, link: ViewLink, token: string) {
     },
     me: { id: '', name: '' },
     albums: albums.map((a) => ({ id: a.id, name: a.name, slug: '' })),
-    reviewers: [],
-    selectionsByReviewer: {},
+    reviewers,
+    selectionsByReviewer,
     fields: ['id', 'filename', 'thumb', 'preview', 'w', 'h', 'album', 'selects', 'mine', 'dup', 'name', 'link', 'info', 'notes', 'notesOpen', 'group'],
     rows: shown.map((i) => {
       const person = casting ? talentGroupName(i.talent_name, i.original_filename) ?? `photo:${i.id}` : null;
