@@ -29,7 +29,7 @@ interface Row {
 const GAP = 6;
 const TARGET_ROW_HEIGHT = 260;
 const OVERSCAN = 900; // px of off-screen rows to keep mounted
-const CAPTION_HEIGHT = 40; // px under each row when tiles carry a caption
+const CAPTION_HEIGHT = 24; // px under each row when tiles carry a caption (one line: name · agency)
 
 /**
  * Justified rows, the layout every photo tool converges on: each row is scaled to
@@ -124,8 +124,8 @@ export default function Grid({
   onDownload?: (img: Img) => void;
   /** Filenames on the tiles — what tells two near-identical frames apart. */
   showNames?: boolean;
-  /** A line or two under each photo (casting: name and status). */
-  caption?: (img: Img) => { title: string; tag?: string | null; sub?: string | null };
+  /** One line under each photo (casting: name · agency). */
+  caption?: (img: Img) => { title: string; tag?: string | null };
 }) {
   const captionHeight = caption ? CAPTION_HEIGHT : 0;
   const ref = useRef<HTMLDivElement>(null);
@@ -264,9 +264,8 @@ export default function Grid({
             {caption && (() => {
               const c = caption(img);
               return (
-                <div className="tile-caption" style={{ height: CAPTION_HEIGHT }} title={[c.title, c.tag, c.sub].filter(Boolean).join(' · ')}>
+                <div className="tile-caption" style={{ height: CAPTION_HEIGHT }} title={[c.title, c.tag].filter(Boolean).join(' · ')}>
                   <span className="tile-caption-title">{c.title}{c.tag && <span className="tile-caption-tag"> · {c.tag}</span>}</span>
-                  {c.sub && <span className="tile-caption-sub">{c.sub}</span>}
                 </div>
               );
             })()}

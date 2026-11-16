@@ -110,11 +110,18 @@ export default function Gallery({
   base,
   admin,
   onBack,
+  viewOnly = false,
 }: {
-  /** API prefix: /api/admin/projects/<id>, /api/p/<slug> or /api/a/<token>. */
+  /** API prefix: /api/admin/projects/<id>, /api/p/<slug>, /api/a/<token> or /api/v/<token>. */
   base: string;
   admin: boolean;
   onBack?: () => void;
+  /**
+   * A client's view-only link (/v/<token>): the same gallery, holding only the
+   * selects it was made for, with nothing to change — no hearts, notes,
+   * downloads, filters or reviewers.
+   */
+  viewOnly?: boolean;
 }) {
   const [data, setData] = useState<GalleryData | null>(null);
   const [images, setImages] = useState<GalleryImg[]>([]);
@@ -161,7 +168,7 @@ export default function Gallery({
   /** Owner: view-only links already fetched this visit, by reviewer id ('all' = everyone's selects). */
   const [viewTokens, setViewTokens] = useState<Record<string, string>>({});
   useNoZoom();
-  const [initialView] = useState(viewFromUrl);
+  const [initialView] = useState(() => (viewOnly ? { filter: { kind: 'all' } as Filter, stats: false } : viewFromUrl()));
   const [arrival] = useState(() => {
     const q = new URLSearchParams(location.search);
     return { shared: q.get('shared') === '1', album: q.get('album') };
@@ -212,11 +219,12 @@ export default function Gallery({
     } catch (err) {
       if (onRemoved(err)) return;
       setLoadError(err instanceof ApiError && err.status === 404
-        ? 'This project no longer exists.'
+        ? viewOnly ? 'This link is no longer active.' : 'This project no longer exists.'
         : 'Could not load the gallery. Check your connection and reload.');
       return;
     }
     setData(d);
+    if (viewOnly) document.title = `Selects · ${d.project.name}`;
     setImages(
       d.rows.map((r) => ({
         id: r[0] as string,
@@ -243,7 +251,7 @@ export default function Gallery({
     // After an upload with failures, stay put: leaving would throw away the list of
     // what failed and the button that retries it.
     setMode((m) => (d.rows.length === 0 && admin ? 'upload' : m === 'upload' && !holdUpload.current ? 'browse' : m));
-  }, [base, onRemoved, admin]);
+  }, [base, onRemoved, admin, viewOnly]);
 
   useEffect(() => { void loadGallery(); }, [loadGallery]);
 
@@ -278,10 +286,10 @@ export default function Gallery({
   }, [data, filter]);
 
   useEffect(() => {
-    if (mode === 'upload') return;
+    if (mode === 'upload' || viewOnly) return;
     const query = viewToQuery(filter, mode === 'stats');
     if (location.search !== query) history.replaceState(history.state, '', location.pathname + query);
-  }, [filter, mode]);
+  }, [filter, mode, viewOnly]);
 
   // Remember scroll position per view, and put it back after a refresh. The
   // grids size themselves after first render, so retry until the page is tall
@@ -701,7 +709,7 @@ export default function Gallery({
   // Space / F toggle the frame on screen, so a pass never needs the mouse.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (openIndex === null) return;
+      if (openIndex === null || viewOnly) return;
       // Typing a note: those keys are letters, not shortcuts.
       if ((e.target as HTMLElement | null)?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
       if (e.key === ' ' || e.key.toLowerCase() === 'f') {
@@ -721,7 +729,7 @@ export default function Gallery({
     window.addEventListener('keydown', onKey);
     window.addEventListener('keyup', onKeyUp);
     return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKeyUp); };
-  }, [openIndex, viewerList, toggle]);
+  }, [openIndex, viewerList, toggle, viewOnly]);
 
   if (!data) {
     return (
@@ -772,7 +780,7 @@ export default function Gallery({
           : filter.kind === 'reviewer' ? `${reviewers.find((r) => r.id === filter.id)?.name ?? 'their'}'s selects`
             : 'all photos';
   const capitalised = downloadPhrase.charAt(0).toUpperCase() + downloadPhrase.slice(1);
-  const canDownload = admin || data.project.allowDownloads;
+  const canDownload = !viewOnly && (admin || data.project.allowDownloads);
 
   const startZip = async () => {
     if (dl && !dl.error && dl.done < dl.total) return;
@@ -996,6 +1004,7 @@ export default function Gallery({
         {onBack && <button className="ghost" onClick={onBack}>← Projects</button>}
         <h2 className="side-title">{data.project.name}</h2>
         {albumTitle && <p className="meta" style={{ margin: '0 0 4px' }}>{albumTitle}</p>}
+        {viewOnly && <p className="meta" style={{ margin: '0 0 4px' }}>Selects</p>}
         {!admin && <div style={{ height: 16 }} />}
         {admin ? (
           <p className="meta" style={{ marginBottom: 20 }}>
@@ -1019,6 +1028,7 @@ export default function Gallery({
             onChange={(e) => { setQuery(e.target.value); setMode('browse'); }}
           />
         )}
+        {!viewOnly && <>
         <label>Show</label>
         <nav style={{ marginBottom: 20 }}>
           {([
@@ -1073,6 +1083,7 @@ export default function Gallery({
             </button>
           )}
         </nav>
+        </>}
 
         {admin && images.length > 0 && casting && (
           <>
@@ -1293,7 +1304,7 @@ export default function Gallery({
               Delete project
             </button>
           </div>
-        ) : (
+        ) : viewOnly ? null : (
           <div className="side-foot">
             {downloadButton}
             {data.me.id ? (
@@ -1474,7 +1485,7 @@ export default function Gallery({
                   const i = img ? indexOf.get(img.id) : undefined;
                   if (i !== undefined) openViewer(i);
                 }}
-                onToggle={toggleTile}
+                onToggle={viewOnly ? undefined : toggleTile}
                 onDownload={canDownload ? downloadFrame : undefined}
                 showNames={false}
                 caption={(img) => ({
@@ -1484,7 +1495,6 @@ export default function Gallery({
                     ? [...new Set((peopleByKey?.get(personKey(img as GalleryImg)) ?? [img as GalleryImg])
                       .map((m) => agencyLabel(data.albums[m.album]?.name)))].filter(Boolean).join(', ')
                     : null,
-                  sub: img.info,
                 })}
               />
             </section>
@@ -1527,10 +1537,10 @@ export default function Gallery({
                   const i = img ? indexOf.get(img.id) : undefined;
                   if (i !== undefined) openViewer(i);
                 }}
-                onToggle={casting ? toggleTile : toggle}
+                onToggle={viewOnly ? undefined : casting ? toggleTile : toggle}
                 onDownload={canDownload ? downloadFrame : undefined}
                 showNames={admin && filter.kind === 'dup'}
-                caption={casting ? (img) => ({ title: talentName(img), sub: img.info }) : undefined}
+                caption={casting ? (img) => ({ title: talentName(img) }) : undefined}
                 onDelete={admin && filter.kind === 'dup' ? (img) => {
                   if (window.confirm(`Delete ${img.filename}, with its selects and notes? This cannot be undone.`)) void deleteImage(img.id);
                 } : undefined}
@@ -1566,7 +1576,7 @@ export default function Gallery({
           index={openIndex}
           onIndex={setOpenIndex}
           onClose={closeViewer}
-          onToggle={toggle}
+          onToggle={viewOnly ? undefined : toggle}
           onDelete={admin ? deleteImage : undefined}
           // With no cover chosen, the first frame of the shoot stands in.
           coverId={data.project.coverImageId ?? images[0]?.id ?? null}
@@ -1586,7 +1596,7 @@ export default function Gallery({
             };
           } : undefined}
           onEditDetails={admin && casting ? editDetails : undefined}
-          notesApi={notesApi}
+          notesApi={viewOnly ? undefined : notesApi}
           workScope={base}
           onNotesChanged={onNotesChanged}
           canModerate={admin}

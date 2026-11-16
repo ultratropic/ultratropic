@@ -1,4 +1,4 @@
-import { talentGroupName, groupFromBoard, talentLabel, type TalentGroup } from '../../shared/names';
+import { talentGroupName, groupFromBoard, type TalentGroup } from '../../shared/names';
 import type { Env } from '../types';
 
 /**
@@ -70,7 +70,12 @@ export async function viewScope(env: Env, link: ViewLink): Promise<(f: Frame) =>
   };
 }
 
-/** Everything the view-only page needs, and nothing more: no picks, no reviewers, no notes. */
+/**
+ * The view-only page is the normal gallery, read-only, so this answers in the
+ * gallery's own shape (see lib/gallery.ts) — holding only the photos the link
+ * reaches, and nothing about who picked them: no picks, no reviewers, no
+ * notes, no brief, no downloads.
+ */
 export async function viewPayload(env: Env, link: ViewLink, token: string) {
   const [inScope, albumsRes, imagesRes] = await Promise.all([
     viewScope(env, link),
@@ -91,9 +96,14 @@ export async function viewPayload(env: Env, link: ViewLink, token: string) {
         talent_name: string | null; link: string | null; info: string | null; talent_group: string | null;
       }>(),
   ]);
-  const albumName = new Map(albumsRes.results.map((a) => [a.id, a.name]));
   const shown = imagesRes.results.filter(inScope);
   const casting = link.kind === 'casting';
+
+  // Only the boards that hold something on this page, in their usual order.
+  const used = new Set(shown.map((i) => i.album_id));
+  const albums = albumsRes.results.filter((a) => used.has(a.id));
+  const albumIndex = new Map(albums.map((a, n) => [a.id, n]));
+  const albumName = new Map(albums.map((a) => [a.id, a.name]));
 
   // A person's group: one set on any of their photos, else what a board's name says.
   const groupOf = new Map<string, TalentGroup | null>();
@@ -109,27 +119,26 @@ export async function viewPayload(env: Env, link: ViewLink, token: string) {
   // The token rides on each image address: it's what lets this page load them.
   const q = `?v=${token}`;
   return {
-    project: { name: link.project_name, kind: casting ? 'casting' : 'shoot' },
-    // Client-facing: just "Selects", never whose.
-    title: 'Selects',
-    images: shown.map((i) => {
+    project: {
+      id: '', name: link.project_name, slug: null, previewEdge: 0,
+      allowDownloads: false, kind: casting ? 'casting' : 'shoot', brief: null,
+    },
+    me: { id: '', name: '' },
+    albums: albums.map((a) => ({ id: a.id, name: a.name, slug: '' })),
+    reviewers: [],
+    selectionsByReviewer: {},
+    fields: ['id', 'filename', 'thumb', 'preview', 'w', 'h', 'album', 'selects', 'mine', 'dup', 'name', 'link', 'info', 'notes', 'notesOpen', 'group'],
+    rows: shown.map((i) => {
       const person = casting ? talentGroupName(i.talent_name, i.original_filename) ?? `photo:${i.id}` : null;
-      return {
-        id: i.id,
-        filename: i.original_filename,
-        thumb: i.thumb_key + q,
-        preview: i.preview_key + q,
-        w: i.width,
-        h: i.height,
-        board: albumName.get(i.album_id) ?? '',
-        ...(casting ? {
-          person,
-          name: talentLabel(i.talent_name, i.original_filename),
-          link: i.link,
-          info: i.info,
-          group: groupOf.get(person!) ?? null,
-        } : {}),
-      };
+      return [
+        i.id, i.original_filename, i.thumb_key + q, i.preview_key + q, i.width, i.height,
+        albumIndex.get(i.album_id) ?? 0, 0, 0, 0,
+        casting ? i.talent_name : null,
+        casting ? i.link : null,
+        casting ? i.info : null,
+        0, 0,
+        casting ? groupOf.get(person!) ?? null : null,
+      ];
     }),
   };
 }

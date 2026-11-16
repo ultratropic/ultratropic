@@ -2,7 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
 import ReviewerApp from './ReviewerApp';
-import ViewOnly from './ViewOnly';
+import Gallery from './Gallery';
 import SignIn from './SignIn';
 import { loadBrand } from './brand';
 import { uploadFiles } from './uploadPipeline';
@@ -20,7 +20,7 @@ const view = window.location.pathname.match(/^\/v\/([A-Za-z0-9]+)/);
 void loadBrand().then(() =>
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
-      {view ? <ViewOnly token={view[1]!} />
+      {view ? <Gallery base={`/api/v/${view[1]!}`} admin={false} viewOnly />
         : match ? <ReviewerApp base={`/api/${match[1]}/${match[2]}`} />
         : location.pathname === '/signin' ? <SignIn /> : <App />}
     </StrictMode>,
