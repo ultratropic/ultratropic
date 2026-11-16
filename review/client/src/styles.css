@@ -639,3 +639,16 @@ button.small { padding: 5px 12px; font-size: 13px; }
   .curated-who { width: 100%; }
   .gallery.curated .section-head h3 { font-size: 24px; }
 }
+
+/* Full screen on a curated link: an always-visible heart on the photo's corner. */
+.photo-heart {
+  position: absolute; right: 14px; bottom: 14px; z-index: 2; transform-origin: 100% 100%;
+  width: 52px; height: 52px; padding: 0; border: none; border-radius: 26px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 30px; line-height: 1; color: #fff; cursor: pointer;
+  background: rgba(0, 0, 0, 0.4);
+  -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+}
+.photo-heart:hover { background: rgba(0, 0, 0, 0.55); }
+.photo-heart.on { background: var(--select); }
+@media (max-width: 760px) { .photo-heart { right: 10px; bottom: 10px; width: 46px; height: 46px; font-size: 26px; } }

@@ -1733,6 +1733,7 @@ export default function Gallery({
           } : undefined}
           onEditDetails={admin && casting ? editDetails : undefined}
           notesApi={viewOnly ? undefined : notesApi}
+          heartOnPhoto={!!curated}
           workScope={base}
           onNotesChanged={onNotesChanged}
           canModerate={admin}

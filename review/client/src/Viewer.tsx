@@ -98,6 +98,7 @@ export default function Viewer({
   coverId,
   albumName,
   pickers = [],
+  heartOnPhoto = false,
   onDownload,
   talent,
   onEditDetails,
@@ -119,6 +120,8 @@ export default function Viewer({
   albumName?: string;
   /** Names of everyone who picked this frame, "You" first. */
   pickers?: string[];
+  /** A clear heart on the photo's lower-right corner, in place of the Select button below. */
+  heartOnPhoto?: boolean;
   onDownload?: (img: Img) => void;
   /** Casting: show the person, not the file. */
   talent?: (img: Img) => { name: string; link?: string | null; info?: string | null; of?: string | null };
@@ -823,6 +826,20 @@ export default function Viewer({
                   {numbers.get(n.id)}
                 </button>
               ))}
+              {heartOnPhoto && onToggle && !notesOpen && (
+                <button
+                  className={`photo-heart${img.mine ? ' on' : ''}`}
+                  style={{ transform: `scale(${1 / zoom})` }}
+                  aria-pressed={!!img.mine}
+                  aria-label={img.mine ? 'Unselect' : 'Select'}
+                  title={img.mine ? 'Selected' : 'Select'}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onPointerUp={(e) => e.stopPropagation()}
+                  onClick={(e) => { e.stopPropagation(); onToggle(img.id); }}
+                >
+                  {img.mine ? '♥' : '♡'}
+                </button>
+              )}
               {draft && (
                 <span
                   className="pin draft"
@@ -958,7 +975,7 @@ export default function Viewer({
             {notesOpen ? (drawing ? 'Draw with one finger · two fingers to zoom and move' : 'Tap the photo to pin a note · pinch to zoom') : (onToggle ? 'Swipe · double-tap to select · pinch to zoom' : 'Swipe · pinch to zoom')}
           </span>
         </span>
-        {onToggle ? (
+        {onToggle && !heartOnPhoto ? (
           <button
             className={`heart big${img.mine ? ' on' : ''}`}
             aria-pressed={!!img.mine}
