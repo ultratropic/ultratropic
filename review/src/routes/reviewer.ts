@@ -363,10 +363,17 @@ export function reviewerRoutes(resolve: Resolve) {
 
   // ---- retouch notes (reviewers) ----
 
+  /** Notes on a photo this reviewer may see. On a curated link: only their own (as with picks). */
+  async function notesOn(t: Target, c: Ctx, imageId: string, rid: string) {
+    const notes = await listNotes(c.env, imageId, rid, false);
+    return t.curated ? notes.filter((n) => n.mine) : notes;
+  }
+
   /** The note, if this reviewer may see it: its photo is in scope and its author isn't hidden from them. */
   async function visibleNote(c: Ctx, t: Target, rid: string, noteId: string) {
     const note = await noteImage(c.env, noteId, t.project.id);
     if (!note || !(await imageInScope(c, t, note.image_id))) return null;
+    if (t.curated && note.reviewer_id !== rid) return null;
     if (note.reviewer_id !== rid) {
       const author = await c.env.DB.prepare(`SELECT hidden FROM reviewers WHERE id = ?`)
         .bind(note.reviewer_id)
@@ -381,7 +388,7 @@ export function reviewerRoutes(resolve: Resolve) {
     if (gate instanceof Response) return gate;
     const imageId = c.req.param('imageId');
     if (!(await imageInScope(c, gate.t, imageId))) return c.json({ error: 'not found' }, 404);
-    return c.json({ notes: await listNotes(c.env, imageId, gate.s.rid, false) });
+    return c.json({ notes: await notesOn(gate.t, c, imageId, gate.s.rid) });
   });
 
   r.post('/:key/images/:imageId/notes', async (c) => {
@@ -391,7 +398,7 @@ export function reviewerRoutes(resolve: Resolve) {
     if (!(await imageInScope(c, gate.t, imageId))) return c.json({ error: 'not found' }, 404);
     const res = await addNote(c.env, gate.t.project.id, imageId, gate.s.rid, await c.req.json().catch(() => ({})));
     if ('error' in res) return c.json(res, 400);
-    return c.json({ id: res.id, notes: await listNotes(c.env, imageId, gate.s.rid, false) }, 201);
+    return c.json({ id: res.id, notes: await notesOn(gate.t, c, imageId, gate.s.rid) }, 201);
   });
 
   r.post('/:key/notes/:noteId/resolve', async (c) => {
@@ -402,7 +409,7 @@ export function reviewerRoutes(resolve: Resolve) {
     const { resolved } = await c.req.json<{ resolved?: boolean }>().catch(() => ({ resolved: undefined }));
     if (typeof resolved !== 'boolean') return c.json({ error: 'resolved: boolean required' }, 400);
     await resolveNote(c.env, c.req.param('noteId'), gate.s.rid, resolved);
-    return c.json({ notes: await listNotes(c.env, note.image_id, gate.s.rid, false) });
+    return c.json({ notes: await notesOn(gate.t, c, note.image_id, gate.s.rid) });
   });
 
   /** Reviewers can only remove their own notes. */
@@ -413,7 +420,7 @@ export function reviewerRoutes(resolve: Resolve) {
     if (!note) return c.json({ error: 'not found' }, 404);
     if (note.reviewer_id !== gate.s.rid) return c.json({ error: 'only the author can delete a note' }, 403);
     await deleteNote(c.env, c.req.param('noteId'));
-    return c.json({ notes: await listNotes(c.env, note.image_id, gate.s.rid, false) });
+    return c.json({ notes: await notesOn(gate.t, c, note.image_id, gate.s.rid) });
   });
 
   return r;

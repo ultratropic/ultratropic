@@ -618,7 +618,7 @@ button.small { padding: 5px 12px; font-size: 13px; }
 /* ---- curated links (/c/): no sidebar, a slim header, titled sections ---- */
 .gallery.curated { display: block; }
 /* Held to a set width, so four to a row stay a comfortable size on a big screen. */
-.gallery.curated .main, .curated-top { max-width: 1140px; margin: 0 auto; }
+.gallery.curated .main, .curated-top { max-width: 1440px; margin: 0 auto; }
 .curated-top {
   display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
   padding: 18px 20px 6px;

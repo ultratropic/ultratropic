@@ -25,6 +25,9 @@ export interface CuratedLink {
 /** A random token, or a readable slug set on the link (lowercase words joined by hyphens). */
 export const CURATED_TOKEN = /^(?:[A-Za-z0-9]{24,64}|[a-z0-9]+(?:-[a-z0-9]+)*)$/;
 
+/** Who a photo is of, in the form the link's names are compared in. */
+const keyOf = (talentName: string | null, filename: string) => talentGroupName(talentName, filename);
+
 type Row = { id: string; project_id: string; title: string | null; layout: string };
 
 function parse(row: Row): CuratedLink | null {
@@ -88,7 +91,7 @@ async function resolve(env: Env, link: CuratedLink): Promise<CuratedLink> {
   return { ...link, place };
 }
 
-/** The links (by id, within one project) a reviewer's session was opened through. */
+/** The links (by id, within one project) a reviewer's session was opened through — not yet placed. */
 export async function curatedLinksById(env: Env, projectId: string, ids: string[]): Promise<CuratedLink[]> {
   if (!ids.length) return [];
   const res = await env.DB.prepare(
@@ -97,7 +100,28 @@ export async function curatedLinksById(env: Env, projectId: string, ids: string[
   )
     .bind(projectId, ...ids)
     .all<Row>();
-  return Promise.all(res.results.flatMap((r) => parse(r) ?? []).map((l) => resolve(env, l)));
+  return res.results.flatMap((r) => parse(r) ?? []);
+}
+
+/**
+ * Is this photo's person on the link? The cheap form of resolve() for the image
+ * route, which runs once per thumbnail: a named person, or anyone a followed
+ * reviewer has picked (every pick finds a section — see resolve()).
+ */
+export async function curatedAllows(env: Env, link: CuratedLink, talentName: string | null, filename: string): Promise<boolean> {
+  const k = keyOf(talentName, filename);
+  if (!k) return false;
+  if (link.sections.some((s) => (s.people ?? []).some((p) => p.trim().toLowerCase() === k))) return true;
+  for (const rid of new Set(link.sections.map((s) => s.from).filter((r): r is string => !!r))) {
+    const res = await env.DB.prepare(
+      `SELECT i.talent_name, i.original_filename FROM selections s JOIN images i ON i.id = s.image_id
+        WHERE s.reviewer_id = ? AND s.project_id = ?`,
+    )
+      .bind(rid, link.project_id)
+      .all<{ talent_name: string | null; original_filename: string }>();
+    if (res.results.some((r) => keyOf(r.talent_name, r.original_filename) === k)) return true;
+  }
+  return false;
 }
 
 export async function curatedByToken(env: Env, token: string) {
@@ -119,8 +143,6 @@ export async function curatedByToken(env: Env, token: string) {
   };
 }
 
-/** Who a photo is of, in the form the link's names are compared in. */
-const keyOf = (talentName: string | null, filename: string) => talentGroupName(talentName, filename);
 
 export function inCurated(link: CuratedLink, talentName: string | null, filename: string): boolean {
   const k = keyOf(talentName, filename);

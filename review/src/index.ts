@@ -3,7 +3,7 @@ import adminRoutes from './routes/admin';
 import uploadRoutes from './routes/upload';
 import selectionRoutes from './routes/selections';
 import { reviewerRoutes, byProjectSlug, byAlbumToken, byCuratedToken } from './routes/reviewer';
-import { curatedLinksById, inCurated } from './lib/curated';
+import { curatedLinksById, curatedAllows } from './lib/curated';
 import viewRoutes from './routes/view';
 import { findViewLink } from './lib/views';
 import exportRoutes from './routes/export';
@@ -108,8 +108,11 @@ app.get('/i/:key', async (c) => {
     if (!session) return c.text('not found', 404);
     // An album this device was let into, or a person on a curated link it opened.
     if (!canSeeAlbum(session, frame.album_id)) {
-      const links = await curatedLinksById(c.env, frame.project_id, session.links ?? []);
-      if (!links.some((l) => inCurated(l, frame.talent_name, frame.original_filename))) return c.text('not found', 404);
+      let allowed = false;
+      for (const l of await curatedLinksById(c.env, frame.project_id, session.links ?? [])) {
+        if (await curatedAllows(c.env, l, frame.talent_name, frame.original_filename)) { allowed = true; break; }
+      }
+      if (!allowed) return c.text('not found', 404);
     }
     // A removed reviewer's cookie is still validly signed: check they still exist,
     // or they could keep loading photos whose addresses they'd already seen.
