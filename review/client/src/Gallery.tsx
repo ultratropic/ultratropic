@@ -161,8 +161,12 @@ export default function Gallery({
     return () => window.removeEventListener('popstate', onPop);
   }, []);
   const [activeAlbum, setActiveAlbum] = useState(0);
-  /** Casting: one grid of everyone; picking an agency in the sidebar narrows it to that board. */
-  const [agency, setAgency] = useState<number | null>(null);
+  /**
+   * Casting: one grid of everyone; picking an agency in the sidebar narrows it
+   * to all of that agency's boards ("LA Models — Female" and "LA Models — Male"
+   * are one line, "LA Models"). Men / Women / Kids then narrow it further.
+   */
+  const [agency, setAgency] = useState<string | null>(null);
   /** Casting: Men / Women / Kids, on top of whichever filter is on. */
   const [who, setWho] = useState<'all' | TalentGroup>('all');
   /** Owner: view-only links already fetched this visit, by reviewer id ('all' = everyone's selects). */
@@ -311,7 +315,7 @@ export default function Gallery({
     const i = data.albums.findIndex((a) => a.slug === arrival.album);
     if (i < 0) return;
     restored.current = true;
-    if (data.project.kind === 'casting') { setAgency(i); return; }
+    if (data.project.kind === 'casting') { setAgency(agencyLabel(data.albums[i]!.name)); return; }
     let tries = 0;
     const land = () => {
       const el = sectionRefs.current[i];
@@ -562,18 +566,32 @@ export default function Gallery({
     }
   }, [images, filter, selectedBy, everyone, unitPicks]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /** Casting: the agencies, in board order, each with the boards it covers. */
+  const agencies = useMemo(() => {
+    const m = new Map<string, number[]>();
+    (data?.albums ?? []).forEach((a, i) => {
+      const k = agencyLabel(a.name) ?? a.name;
+      (m.get(k) ?? m.set(k, []).get(k)!).push(i);
+    });
+    return [...m].map(([label, albums]) => ({ label, albums }));
+  }, [data?.albums]);
+  const agencyAlbums = useMemo(
+    () => (agency === null ? null : new Set(agencies.find((a) => a.label === agency)?.albums ?? [])),
+    [agency, agencies],
+  );
+
   // Casting: the name search narrows whatever filter is on.
   // A casting is one grid of everyone, A to Z (the agency shows by each name),
   // optionally narrowed to one agency's board from the sidebar.
   const visible = useMemo(() => {
     if (!casting) return byFilter;
     const q = query.trim().toLowerCase();
-    let list = agency === null ? byFilter : byFilter.filter((i) => i.album === agency);
+    let list = agencyAlbums === null ? byFilter : byFilter.filter((i) => agencyAlbums.has(i.album));
     if (who !== 'all') list = list.filter(inWho);
     if (q) list = list.filter((i) => talentName(i).toLowerCase().includes(q));
     const name = (i: GalleryImg) => talentGroupName(i.name, i.filename) ?? talentName(i);
     return [...list].sort((a, b) => name(a).localeCompare(name(b), undefined, { sensitivity: 'base' }) || a.album - b.album);
-  }, [byFilter, casting, query, agency, who, groupByPerson]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [byFilter, casting, query, agencyAlbums, who, groupByPerson]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * What full screen steps through. A shoot: the photos on screen. A casting:
@@ -751,7 +769,9 @@ export default function Gallery({
   const everyoneCount = who === 'all' || !casting ? everyone.ids.size
     : [...everyone.ids].filter((u) => groupByPerson.get(u) === who).length;
   const notesCount = countUnits(images.filter((i) => (i.notes ?? 0) > 0 && inWho(i)));
-  const whoCount = (g: TalentGroup) => [...groupByPerson.values()].filter((x) => x === g).length;
+  // Men / Women / Kids counts follow the agency picked in the sidebar.
+  const whoCount = (g: TalentGroup) => [...groupByPerson].filter(([k, x]) => x === g
+    && (agencyAlbums === null || (peopleByKey?.get(k) ?? []).some((m) => agencyAlbums.has(m.album)))).length;
   const allTalentCount = who === 'all' || !casting ? unitCount : whoCount(who);
   const dupCount = images.filter((i) => i.dup).length;
 
@@ -1160,22 +1180,49 @@ export default function Gallery({
           </>
         )}
 
-        <label>Albums</label>
+        <label>{casting ? 'Agencies' : 'Albums'}</label>
         <nav>
-          {data.albums.map((a, i) => {
+          {casting && agencies.map((ag) => {
+            // People across the agency's boards (someone on two of them counts once).
+            const keys = new Set<string>();
+            const mine = new Set<string>();
+            for (const img of images) {
+              if (!ag.albums.includes(img.album)) continue;
+              const k = personKey(img);
+              keys.add(k);
+              if (img.mine) mine.add(k);
+            }
+            const shared = admin ? ag.albums.map((i) => data.albums[i]!).filter((a) => a.shareToken) : [];
+            return (
+              <button
+                key={ag.label}
+                className={`side-link${agency === ag.label && mode === 'browse' ? ' active' : ''}`}
+                aria-pressed={agency === ag.label}
+                title={ag.albums.length > 1 ? ag.albums.map((i) => data.albums[i]!.name).join(', ') : undefined}
+                onClick={() => {
+                  setMode('browse');
+                  setAgency((cur) => (cur === ag.label ? null : ag.label));
+                  window.scrollTo({ top: 0 });
+                }}
+              >
+                <span className="side-name">
+                  {ag.label}
+                  {shared.length > 0 && <span className="lock" title="Has a client link">{shared.some((a) => a.hasPassword) ? '🔒' : '↗'}</span>}
+                </span>
+                <span className="meta">{mine.size > 0 ? `${mine.size}/${keys.size}` : keys.size}</span>
+              </button>
+            );
+          })}
+          {!casting && data.albums.map((a, i) => {
             // Totals, not the filtered view: the sidebar is a map of the whole
             // shoot and shouldn't read "0" everywhere because a filter is active.
             const total = albumTotals.get(i) ?? { n: 0, mine: 0 };
             return (
               <button
                 key={a.id}
-                className={`side-link${(casting ? agency === i : activeAlbum === i) && mode === 'browse' ? ' active' : ''}`}
-                aria-pressed={casting ? agency === i : undefined}
+                className={`side-link${activeAlbum === i && mode === 'browse' ? ' active' : ''}`}
                 onClick={() => {
                   setMode('browse');
-                  // A casting has no sections to scroll to: the agency narrows the grid
-                  // (and again shows everyone).
-                  if (casting) { setAgency((cur) => (cur === i ? null : i)); window.scrollTo({ top: 0 }); return; }
                   // After this render: the section exists again, and on a phone the
                   // menu has closed and released its scroll lock.
                   setTimeout(() =>
@@ -1441,7 +1488,7 @@ export default function Gallery({
         )}
         {mode === 'browse' && casting && (() => {
           const list = tilesFor(visible);
-          const album = agency === null ? null : data.albums[agency];
+          const boards = agencyAlbums === null ? [] : [...agencyAlbums];
           const picked = list.filter((x) => x.mine).length;
           return (
             <section>
@@ -1461,20 +1508,35 @@ export default function Gallery({
                 </div>
               )}
               <header className="section-head">
-                <h3>{album ? album.name : who === 'all' ? 'Everyone' : GROUPS.find((g) => g.key === who)!.label}</h3>
+                <h3>
+                  {agency ?? (who === 'all' ? 'Everyone' : GROUPS.find((g) => g.key === who)!.label)}
+                  {agency !== null && who !== 'all' && ` · ${GROUPS.find((g) => g.key === who)!.label}`}
+                </h3>
                 <span className="meta">
                   {list.length} {list.length === 1 ? 'person' : 'people'}
                   {picked > 0 && ` · ${picked} selected`}
                 </span>
-                {album ? (
+                {agency !== null ? (
                   <span className="section-actions">
                     <button className="text-btn" onClick={() => setAgency(null)}>Show everyone</button>
-                    {admin && agency !== null && albumActions(album, agency)}
+                    {admin && boards.length === 1 && albumActions(data.albums[boards[0]!]!, boards[0]!)}
                   </span>
                 ) : null}
               </header>
-              {admin && album && sharing === album.id && (
+              {/* Owner: an agency with several boards keeps each board's links and delete, one line each. */}
+              {admin && boards.length > 1 && (
+                <div className="agency-boards">
+                  {boards.map((i) => (
+                    <div key={data.albums[i]!.id} className="meta">
+                      <span>{data.albums[i]!.name}</span>
+                      <span className="section-actions">{albumActions(data.albums[i]!, i)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {admin && boards.map((i) => data.albums[i]!).filter((album) => sharing === album.id).map((album) => (
                 <SharePanel
+                  key={album.id}
                   albumId={album.id}
                   state={album}
                   projectHasPassword={!!data.project.hasPassword}
@@ -1483,7 +1545,7 @@ export default function Gallery({
                     albums: d.albums.map((a) => (a.id === album.id ? { ...a, ...st } : a)),
                   })}
                 />
-              )}
+              ))}
               <Grid
                 images={list}
                 onOpen={(localIndex) => {
