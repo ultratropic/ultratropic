@@ -110,7 +110,8 @@ export async function viewPayload(env: Env, link: ViewLink, token: string) {
   const q = `?v=${token}`;
   return {
     project: { name: link.project_name, kind: casting ? 'casting' : 'shoot' },
-    title: link.reviewer_name ? `${link.reviewer_name}'s selects` : 'Selects',
+    // Client-facing: just "Selects", never whose.
+    title: 'Selects',
     images: shown.map((i) => {
       const person = casting ? talentGroupName(i.talent_name, i.original_filename) ?? `photo:${i.id}` : null;
       return {

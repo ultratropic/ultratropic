@@ -7,10 +7,8 @@
   /* "Selected": a deep, muted crimson — reads clearly on a photo edge and as a
      fill behind white, without the neon of a pure red. */
   --select: #a8343c;
-  color-scheme: light dark;
-}
-@media (prefers-color-scheme: dark) {
-  :root { --bg: #0d0d0d; --fg: #f0f0f0; --muted: #808080; --line: #262626; --accent: #f0f0f0; }
+  /* Always light: white background and dark text, whatever the device's setting. */
+  color-scheme: light;
 }
 * { box-sizing: border-box; }
 html { scrollbar-gutter: stable; }
