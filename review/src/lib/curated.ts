@@ -79,6 +79,8 @@ async function resolve(env: Env, link: CuratedLink): Promise<CuratedLink> {
       const group = p.set ?? p.board;
       let section = link.sections.findIndex((s) => s.from === rid && s.group && s.group === group);
       if (section < 0) section = link.sections.findIndex((s) => s.from === rid && !s.group);
+      // No group known and no catch-all section: rather than drop a pick, use the first section following them.
+      if (section < 0) section = link.sections.findIndex((s) => s.from === rid);
       if (section < 0) continue;
       place.set(k, { section, order: place.size });
     }
