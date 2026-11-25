@@ -87,7 +87,8 @@ async function resolve(env: Env, link: CuratedLink): Promise<CuratedLink> {
       let section = link.sections.findIndex((s) => s.from === rid && s.group && s.group === group);
       if (section < 0) section = link.sections.findIndex((s) => s.from === rid && !s.group);
       // No group known and no catch-all section: rather than drop a pick, use the first section following them.
-      if (section < 0) section = link.sections.findIndex((s) => s.from === rid);
+      // (A known group with no section of its own — e.g. men on a kids-only link — stays off the page.)
+      if (section < 0 && !group) section = link.sections.findIndex((s) => s.from === rid);
       if (section < 0) continue;
       place.set(k, { section, order: place.size });
     }
@@ -123,7 +124,12 @@ export async function curatedAllows(env: Env, link: CuratedLink, talentName: str
     )
       .bind(rid, link.project_id)
       .all<{ talent_name: string | null; original_filename: string }>();
-    if (res.results.some((r) => keyOf(r.talent_name, r.original_filename) === k)) return true;
+    if (!res.results.some((r) => keyOf(r.talent_name, r.original_filename) === k)) continue;
+    // Live sections for only some groups (e.g. a kids-only link): place the page properly to be sure.
+    const live = link.sections.filter((s) => s.from === rid);
+    const covered = live.some((s) => !s.group) || ['men', 'women', 'kids'].every((g) => live.some((s) => s.group === g));
+    if (covered) return true;
+    return (await resolve(env, link)).place.has(k);
   }
   return false;
 }
