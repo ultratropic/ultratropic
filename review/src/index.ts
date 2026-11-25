@@ -85,42 +85,81 @@ app.get('/i/:key', async (c) => {
   const viewToken = c.req.query('v');
   const ownerSession = await readOwner(c);
   if (!ownerSession && !hasAnyReviewerCookie(c) && !viewToken) return c.text('unauthorized', 401);
-  const frame = await c.env.DB.prepare(
-    `SELECT i.id, i.project_id, i.album_id, i.talent_name, i.original_filename, p.workspace_id
-       FROM images i JOIN projects p ON p.id = i.project_id
-      WHERE i.thumb_key = ?1 OR i.preview_key = ?1 LIMIT 1`,
-  )
+  type Frame = { id: string; project_id: string; album_id: string; talent_name: string | null; original_filename: string; workspace_id: string | null };
+  const FRAME = `SELECT i.id, i.project_id, i.album_id, i.talent_name, i.original_filename, p.workspace_id
+                   FROM images i JOIN projects p ON p.id = i.project_id`;
+  let frames: Frame[] = [];
+  let video: { content: string } | null = null;
+  const frame = await c.env.DB.prepare(`${FRAME} WHERE i.thumb_key = ?1 OR i.preview_key = ?1 LIMIT 1`)
     .bind(key)
-    .first<{ id: string; project_id: string; album_id: string; talent_name: string | null; original_filename: string; workspace_id: string | null }>();
-  if (!frame) return c.text('not found', 404);
-  if (viewToken) {
-    const link = await findViewLink(c.env, viewToken);
-    if (!link || link.project_id !== frame.project_id) {
-      return c.text('not found', 404);
-    }
+    .first<Frame>();
+  if (frame) frames = [frame];
+  else {
+    // A casting video (or its poster): reachable by whoever may see a photo of that person.
+    const v = await c.env.DB.prepare(`SELECT project_id, talent_name, key FROM videos WHERE key = ?1 OR poster_key = ?1 LIMIT 1`)
+      .bind(key)
+      .first<{ project_id: string; talent_name: string; key: string }>()
+      .catch(() => null);
+    if (!v) return c.text('not found', 404);
+    video = { content: v.key === key ? 'video' : 'poster' };
+    frames = (await c.env.DB.prepare(`${FRAME} WHERE i.project_id = ? AND lower(trim(i.talent_name)) = lower(trim(?))`)
+      .bind(v.project_id, v.talent_name)
+      .all<Frame>()).results;
+    if (!frames.length) return c.text('not found', 404);
   }
-  const ownsIt = !viewToken && !!ownerSession && frame.workspace_id === ownerSession.wid &&
-    !!(await c.env.DB.prepare(`SELECT 1 FROM members WHERE workspace_id = ? AND user_id = ?`)
-      .bind(ownerSession.wid, ownerSession.uid)
-      .first());
-  if (!ownsIt && !viewToken) {
+  let ok = false;
+  for (const f of frames) if (await mayFetch(f)) { ok = true; break; }
+  if (!ok) return c.text('not found', 404);
+
+  async function mayFetch(frame: Frame): Promise<boolean> {
+    if (viewToken) {
+      const link = await findViewLink(c.env, viewToken);
+      return !!link && link.project_id === frame.project_id;
+    }
+    const ownsIt = !!ownerSession && frame.workspace_id === ownerSession.wid &&
+      !!(await c.env.DB.prepare(`SELECT 1 FROM members WHERE workspace_id = ? AND user_id = ?`)
+        .bind(ownerSession.wid, ownerSession.uid)
+        .first());
+    if (ownsIt) return true;
     const session = await readReviewerFor(c, frame.project_id);
-    if (!session) return c.text('not found', 404);
+    if (!session) return false;
     // An album this device was let into, or a person on a curated link it opened.
     if (!canSeeAlbum(session, frame.album_id)) {
       let allowed = false;
       for (const l of await curatedLinksById(c.env, frame.project_id, session.links ?? [])) {
         if (await curatedAllows(c.env, l, frame.talent_name, frame.original_filename)) { allowed = true; break; }
       }
-      if (!allowed) return c.text('not found', 404);
+      if (!allowed) return false;
     }
     // A removed reviewer's cookie is still validly signed: check they still exist,
     // or they could keep loading photos whose addresses they'd already seen.
     // A guest (rid '') has no row to check: the link itself is their access.
-    const live = session.rid === '' || await c.env.DB.prepare(`SELECT 1 FROM reviewers WHERE id = ? AND project_id = ?`)
+    return session.rid === '' || !!(await c.env.DB.prepare(`SELECT 1 FROM reviewers WHERE id = ? AND project_id = ?`)
       .bind(session.rid, frame.project_id)
-      .first();
-    if (!live) return c.text('not found', 404);
+      .first());
+  }
+
+  // Videos stream straight from R2 in ranges (players seek, and Safari insists on it).
+  if (video) {
+    const range = c.req.header('range');
+    const object = await c.env.BUCKET.get(key, range ? { range: c.req.raw.headers } : undefined);
+    if (!object) return c.text('not found', 404);
+    const h = new Headers({
+      'content-type': object.httpMetadata?.contentType ?? (video.content === 'video' ? 'video/mp4' : 'image/jpeg'),
+      etag: object.httpEtag,
+      'accept-ranges': 'bytes',
+      'cache-control': 'private, max-age=31536000, immutable',
+    });
+    const r = (object as R2ObjectBody).range as { offset?: number; length?: number; suffix?: number } | undefined;
+    if (range && r) {
+      const offset = r.suffix !== undefined ? object.size - r.suffix : r.offset ?? 0;
+      const length = r.suffix !== undefined ? r.suffix : r.length ?? object.size - offset;
+      h.set('content-range', `bytes ${offset}-${offset + length - 1}/${object.size}`);
+      h.set('content-length', String(length));
+      return new Response((object as R2ObjectBody).body, { status: 206, headers: h });
+    }
+    h.set('content-length', String(object.size));
+    return new Response((object as R2ObjectBody).body, { headers: h });
   }
 
   // Two cache policies for one image. The browser gets `private`: a shared

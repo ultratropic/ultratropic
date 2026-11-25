@@ -1,4 +1,5 @@
 import { talentGroupName, groupFromBoard, type TalentGroup } from '../../shared/names';
+import { videosFor } from './videos';
 import type { Env } from '../types';
 
 /**
@@ -109,6 +110,9 @@ export async function viewPayload(env: Env, link: ViewLink, token: string) {
 
   // The token rides on each image address: it's what lets this page load them.
   const q = `?v=${token}`;
+  const videos = casting
+    ? await videosFor(env, link.project_id, new Set(shown.map((i) => talentGroupName(i.talent_name, i.original_filename)).filter((k): k is string => !!k)), q)
+    : [];
   return {
     project: {
       id: '', name: link.project_name, slug: null, previewEdge: 0,
@@ -120,6 +124,7 @@ export async function viewPayload(env: Env, link: ViewLink, token: string) {
     albums: albums.map((a) => ({ id: a.id, name: a.name, slug: '' })),
     reviewers,
     selectionsByReviewer,
+    videos,
     fields: ['id', 'filename', 'thumb', 'preview', 'w', 'h', 'album', 'selects', 'mine', 'dup', 'name', 'link', 'info', 'notes', 'notesOpen', 'group'],
     rows: shown.map((i) => {
       const person = casting ? talentGroupName(i.talent_name, i.original_filename) ?? `photo:${i.id}` : null;

@@ -652,3 +652,15 @@ button.small { padding: 5px 12px; font-size: 13px; }
 .photo-heart:hover { background: rgba(0, 0, 0, 0.55); }
 .photo-heart.on { background: var(--select); }
 @media (max-width: 760px) { .photo-heart { right: 10px; bottom: 10px; width: 46px; height: 46px; font-size: 26px; } }
+
+/* Casting videos: their own block under the photos, set apart by a line. */
+.video-section { margin-top: 56px; border-top: 1px solid var(--fg); padding-top: 8px; }
+.video-row { display: flex; flex-wrap: wrap; gap: 24px; padding: 16px 0 48px; }
+.video-tile { margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.video-tile video { display: block; height: min(560px, 70vh); max-width: 100%; background: #000; border-radius: 2px; }
+.video-tile figcaption { text-align: left; }
+@media (max-width: 600px) {
+  .video-tile { width: 100%; }
+  .video-tile video { height: auto; width: 100%; }
+}
+.video-section .section-head { position: static; border-bottom: none; }

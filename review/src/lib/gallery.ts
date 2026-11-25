@@ -1,6 +1,7 @@
-import { rawMatch } from '../../shared/names';
+import { rawMatch, talentGroupName } from '../../shared/names';
 import type { Env } from '../types';
 import { inCurated, curatedSections, type CuratedLink } from './curated';
+import { videosFor } from './videos';
 
 interface Options {
   projectId: string;
@@ -125,6 +126,10 @@ export async function buildGallery(env: Env, o: Options) {
   }
 
   const me = reviewersRes.results.find((r) => r.id === o.reviewerId);
+  // Casting videos of the people on this page (a curated link shows none).
+  const videos = project.kind === 'casting' && !curated
+    ? await videosFor(env, o.projectId, new Set(images.map((i) => talentGroupName(i.talent_name, i.original_filename)).filter((k): k is string => !!k)))
+    : [];
 
   return {
     project: {
@@ -158,6 +163,7 @@ export async function buildGallery(env: Env, o: Options) {
       }))
       .filter((r) => r.isMe || r.count > 0 || o.admin),
     selectionsByReviewer,
+    videos,
     fields: ['id', 'filename', 'thumb', 'preview', 'w', 'h', 'album', 'selects', 'mine', 'dup', 'name', 'link', 'info', 'notes', 'notesOpen', 'group'],
     rows: images.map((i) => [
       i.id,

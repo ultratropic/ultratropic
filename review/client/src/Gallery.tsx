@@ -48,6 +48,8 @@ interface GalleryData {
   rows: unknown[][];
   /** View-only links: where the page opens — one person's selects, or (null) everyone's. */
   view?: { person: string | null };
+  /** Casting videos of the people this page shows (src/poster are /i/ keys). */
+  videos?: Array<{ id: string; name: string; src: string; poster: string | null; w: number; h: number; duration: number | null }>;
   /** Curated links (/c/): titled sections of chosen people, each with its photos' ids. */
   curated?: { title: string | null; sections: Array<{ title: string; ids: string[] }> };
 }
@@ -1642,6 +1644,35 @@ export default function Gallery({
                     : null,
                 })}
               />
+              {(() => {
+                // Casting videos of the people above, set apart below a line.
+                const shown = new Set(list.map((x) => personKey(x)));
+                const vids = (data.videos ?? []).filter((v) => shown.has(`name:${v.name.trim().toLowerCase()}`));
+                if (!vids.length) return null;
+                return (
+                  <div className="video-section">
+                    <header className="section-head">
+                      <h3>Videos</h3>
+                      <span className="meta">{vids.length} {vids.length === 1 ? 'video' : 'videos'}</span>
+                    </header>
+                    <div className="video-row">
+                      {vids.map((v) => (
+                        <figure key={v.id} className="video-tile">
+                          <video
+                            controls
+                            playsInline
+                            preload="metadata"
+                            poster={v.poster ? `/i/${v.poster}` : undefined}
+                            src={`/i/${v.src}`}
+                            style={{ aspectRatio: `${v.w} / ${v.h}` }}
+                          />
+                          <figcaption className="tile-caption-title">{v.name}</figcaption>
+                        </figure>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
             </section>
           );
         })()}
