@@ -10,6 +10,7 @@ import type { Env } from '../types';
  *   { title, people: [names] }                      — always these people, in this order
  *   { title, from: <reviewer id>, group: 'kids' }   — that person's current picks in this group
  *   { title, from: <reviewer id> }                  — the rest of that person's current picks
+ *   { title, group: 'kids' }                        — everyone in the pool in this group (live)
  * Someone named in a fixed section stays there; live sections fill A to Z.
  * `hide: [names]` keeps people off the page whatever (e.g. not available).
  */
@@ -28,6 +29,9 @@ export interface CuratedLink {
 /** A random token, or a readable slug set on the link (lowercase words joined by hyphens). */
 export const CURATED_TOKEN = /^(?:[A-Za-z0-9]{24,64}|[a-z0-9]+(?:-[a-z0-9]+)*)$/;
 
+/** Stands in for a reviewer in sections that hold everyone in a group, picked or not. */
+const EVERYONE = '*';
+
 /** Who a photo is of, in the form the link's names are compared in. */
 const keyOf = (talentName: string | null, filename: string) => talentGroupName(talentName, filename);
 
@@ -42,7 +46,8 @@ function parse(row: Row): CuratedLink | null {
       .map((s) => ({
         title: s.title as string,
         people: Array.isArray(s.people) ? s.people.filter((p): p is string => typeof p === 'string') : undefined,
-        from: typeof s.from === 'string' ? s.from : undefined,
+        // A group with no names and no one to follow = everyone in that group (EVERYONE stands in as "who").
+        from: typeof s.from === 'string' ? s.from : !Array.isArray(s.people) && (s.group === 'men' || s.group === 'women' || s.group === 'kids') ? EVERYONE : undefined,
         group: s.group === 'men' || s.group === 'women' || s.group === 'kids' ? s.group : undefined,
       }));
     const hide = new Set((Array.isArray(l.hide) ? l.hide : []).filter((p): p is string => typeof p === 'string').map((p) => p.trim().toLowerCase()));
@@ -64,7 +69,7 @@ async function resolve(env: Env, link: CuratedLink): Promise<CuratedLink> {
   for (const rid of followed) {
     const res = await env.DB.prepare(
       `SELECT i.talent_name, i.original_filename, i.talent_group, a.name AS album,
-              EXISTS (SELECT 1 FROM selections s WHERE s.image_id = i.id AND s.reviewer_id = ?1) AS picked
+              (?1 = '*' OR EXISTS (SELECT 1 FROM selections s WHERE s.image_id = i.id AND s.reviewer_id = ?1)) AS picked
          FROM images i JOIN albums a ON a.id = i.album_id
         WHERE i.project_id = ?2`,
     )
@@ -117,7 +122,18 @@ export async function curatedAllows(env: Env, link: CuratedLink, talentName: str
   const k = keyOf(talentName, filename);
   if (!k || link.hide.has(k)) return false;
   if (link.sections.some((s) => (s.people ?? []).some((p) => p.trim().toLowerCase() === k))) return true;
-  for (const rid of new Set(link.sections.map((s) => s.from).filter((r): r is string => !!r))) {
+  const everyone = new Set(link.sections.filter((s) => s.from === EVERYONE).map((s) => s.group));
+  if (everyone.size && talentName?.trim()) {
+    const rows = await env.DB.prepare(
+      `SELECT i.talent_group, a.name AS album FROM images i JOIN albums a ON a.id = i.album_id
+        WHERE i.project_id = ? AND lower(trim(i.talent_name)) = ?`,
+    )
+      .bind(link.project_id, k)
+      .all<{ talent_group: string | null; album: string }>();
+    const set = rows.results.map((r) => r.talent_group).find((g) => g === 'men' || g === 'women' || g === 'kids');
+    if (everyone.has((set ?? rows.results.map((r) => groupFromBoard(r.album)).find((g) => g)) as TalentGroup)) return true;
+  }
+  for (const rid of new Set(link.sections.map((s) => s.from).filter((r): r is string => !!r && r !== EVERYONE))) {
     const res = await env.DB.prepare(
       `SELECT i.talent_name, i.original_filename FROM selections s JOIN images i ON i.id = s.image_id
         WHERE s.reviewer_id = ? AND s.project_id = ?`,
